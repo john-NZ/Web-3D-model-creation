@@ -922,6 +922,10 @@
         // viewImages tracks each view: { front: "filename.png", back: null, left: null, right: null }
         const viewImages = { front: null, back: null, left: null, right: null };
         let modelFilename = null;
+        // ID of the project row in the database. Set after /api/upload-front
+        // creates the row, then sent with every subsequent call so the backend
+        // knows which row to update.
+        let currentProjectId = null;
 
         const VIEW_KEYS = ['front', 'back', 'left', 'right'];
         const VIEW_LABELS = { front: 'Front View', back: 'Back View', left: 'Left View', right: 'Right View' };
@@ -1124,6 +1128,7 @@
                 if (!res.ok) throw new Error(data.error || 'Failed to upload image');
 
                 viewImages.front = data.image;
+                currentProjectId = data.projectId;
                 renderGallery();
                 updateViewsStatus();
                 goToStep(2);
@@ -1299,6 +1304,7 @@
                 const formData = new FormData();
                 formData.append('image', file);
                 formData.append('view', viewName);
+                formData.append('projectId', String(currentProjectId));
 
                 const res = await fetch('/api/upload-view', { method: 'POST', body: formData });
                 const data = await res.json();
@@ -1336,6 +1342,7 @@
                         frontImage: viewImages.front,
                         view,
                         prompt: getPrompt(view),
+                        projectId: currentProjectId,
                     }),
                 });
                 const data = await res.json();
@@ -1413,7 +1420,7 @@
                 const res = await fetch('/api/generate-model', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ images, views, settings }),
+                    body: JSON.stringify({ images, views, settings, projectId: currentProjectId }),
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to generate model');

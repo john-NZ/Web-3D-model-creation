@@ -6,10 +6,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import https from "https";
 import http from "http";
+import * as db from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Until auth ships, every project is owned by user 1 (the seeded owner).
+// When auth lands, replace with req.user.id from session middleware.
+const OWNER_USER_ID = 1;
 
 // Directories. STORAGE_DIR points at the Railway Volume in production
 // (e.g. /app/storage). Locally it's unset and we fall back to the project root.
@@ -47,7 +52,7 @@ app.use("/api/uploads", express.static(UPLOAD_DIR));
 // ============================================================
 
 // POST /api/upload-front
-app.post("/api/upload-front", upload.single("image"), (req, res) => {
+app.post("/api/upload-front", upload.single("image"), async (req, res) => {
   try {
     console.log("\n[API] POST /api/upload-front");
     if (!req.file) return res.status(400).json({ error: "No image file uploaded" });
@@ -55,7 +60,11 @@ app.post("/api/upload-front", upload.single("image"), (req, res) => {
     const frontName = timestamp + "-front.png";
     fs.copyFileSync(req.file.path, path.join(OUTPUT_DIR, frontName));
     console.log("[Upload] Front image saved as:", frontName);
-    res.json({ image: frontName });
+
+    const project = await db.createProject(OWNER_USER_ID, { front_image: frontName });
+    console.log("[DB] Created project id=" + project.id);
+
+    res.json({ image: frontName, projectId: project.id });
   } catch (err) {
     console.error("[Upload] ERROR:", err.message);
     res.status(500).json({ error: err.message });
@@ -63,18 +72,27 @@ app.post("/api/upload-front", upload.single("image"), (req, res) => {
 });
 
 // POST /api/upload-view
-app.post("/api/upload-view", upload.single("image"), (req, res) => {
+app.post("/api/upload-view", upload.single("image"), async (req, res) => {
   try {
     console.log("\n[API] POST /api/upload-view");
     if (!req.file) return res.status(400).json({ error: "No image file uploaded" });
     const view = req.body.view;
+    const projectId = Number(req.body.projectId);
     if (!["back", "left", "right"].includes(view)) {
       return res.status(400).json({ error: "Invalid view. Must be: back, left, or right" });
+    }
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ error: "projectId is required" });
     }
     const timestamp = Date.now();
     const fileName = timestamp + "-" + view + ".png";
     fs.copyFileSync(req.file.path, path.join(OUTPUT_DIR, fileName));
     console.log("[Upload] " + view + " view saved as:", fileName);
+
+    const updated = await db.updateProject(projectId, OWNER_USER_ID, { [view + "_image"]: fileName });
+    if (!updated) return res.status(404).json({ error: "Project not found" });
+    console.log("[DB] Updated project id=" + projectId + " " + view + "_image");
+
     res.json({ image: fileName });
   } catch (err) {
     console.error("[Upload] ERROR:", err.message);
@@ -131,13 +149,17 @@ app.post("/api/generate-view", async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY not configured" });
 
-    const { frontImage, view, prompt } = req.body || {};
+    const { frontImage, view, prompt, projectId } = req.body || {};
     if (!frontImage) return res.status(400).json({ error: "frontImage filename is required" });
     if (!["back", "left", "right"].includes(view)) {
       return res.status(400).json({ error: "Invalid view. Must be: back, left, or right" });
     }
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "prompt is required" });
+    }
+    const pid = Number(projectId);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return res.status(400).json({ error: "projectId is required" });
     }
 
     const refPath = path.join(OUTPUT_DIR, frontImage);
@@ -152,6 +174,13 @@ app.post("/api/generate-view", async (req, res) => {
     const fileName = Date.now() + "-" + view + ".png";
     fs.writeFileSync(path.join(OUTPUT_DIR, fileName), imgBuffer);
     console.log("[OpenAI] Saved: " + fileName);
+
+    const updated = await db.updateProject(pid, OWNER_USER_ID, {
+      [view + "_image"]: fileName,
+      [view + "_prompt"]: prompt,
+    });
+    if (!updated) return res.status(404).json({ error: "Project not found" });
+    console.log("[DB] Updated project id=" + pid + " " + view + " image+prompt");
 
     res.json({ image: fileName });
   } catch (err) {
@@ -407,12 +436,16 @@ app.post("/api/generate-model", async (req, res) => {
   try {
     console.log("\n[API] POST /api/generate-model");
     console.log("[API] Request body:", JSON.stringify(req.body));
-    const { images, views, settings } = req.body;
+    const { images, views, settings, projectId } = req.body;
     if (!images || images.length < 2 || !views || views.length !== images.length) {
       return res.status(400).json({ error: "At least 2 images with matching view labels required (e.g. front + one other)" });
     }
     if (!views.includes("front")) {
       return res.status(400).json({ error: "Front view is required" });
+    }
+    const pid = Number(projectId);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return res.status(400).json({ error: "projectId is required" });
     }
 
     const imagePaths = images.map((name) => path.join(OUTPUT_DIR, name));
@@ -456,6 +489,15 @@ app.post("/api/generate-model", async (req, res) => {
     }
 
     console.log("[HiTem3D] Done! Results:", JSON.stringify(results));
+
+    const updated = await db.updateProject(pid, OWNER_USER_ID, {
+      model_file: results.model || null,
+      preview_image: results.preview || null,
+      settings: settings || null,
+    });
+    if (!updated) console.warn("[DB] Project " + pid + " not found, skipped persistence");
+    else console.log("[DB] Updated project id=" + pid + " with model+preview");
+
     res.json(results);
   } catch (err) {
     console.error("[HiTem3D] ERROR:", err.message);
