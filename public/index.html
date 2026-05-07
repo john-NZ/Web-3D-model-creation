@@ -745,6 +745,121 @@
         .error-message.visible {
             display: block;
         }
+
+        /* History strip on Step 1 */
+        .history-section {
+            margin-bottom: 32px;
+        }
+
+        .history-section-header {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .history-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .history-card {
+            background: rgba(30, 30, 50, 0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .history-card:hover {
+            border-color: rgba(100, 100, 255, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .history-card-thumb {
+            aspect-ratio: 1;
+            background: rgba(15, 15, 30, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .history-card-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .history-card-thumb-placeholder {
+            color: #555;
+            font-size: 24px;
+        }
+
+        .history-card-meta {
+            padding: 8px 10px;
+            font-size: 11px;
+            color: #aaa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .history-card-id {
+            font-weight: 600;
+            color: #ccc;
+        }
+
+        .history-card-status {
+            font-size: 9px;
+            text-transform: uppercase;
+            padding: 2px 5px;
+            border-radius: 3px;
+            letter-spacing: 0.04em;
+        }
+
+        .history-card-status.done {
+            background: rgba(80, 200, 120, 0.2);
+            color: #50c878;
+        }
+
+        .history-card-status.draft {
+            background: rgba(200, 150, 80, 0.2);
+            color: #d4a058;
+        }
+
+        .history-card-variant-badge {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: rgba(140, 100, 255, 0.85);
+            color: #fff;
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
+        /* Variant lineage banner shown when a project with parent_id is loaded */
+        .variant-banner {
+            display: none;
+            background: rgba(140, 100, 255, 0.15);
+            border: 1px solid rgba(140, 100, 255, 0.4);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #c9b3ff;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+
+        .variant-banner.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -760,8 +875,17 @@
     </header>
 
     <main>
+        <!-- Lineage banner shown when a project with parent_id is loaded -->
+        <div class="variant-banner" id="variant-banner"></div>
+
         <!-- Step 1: Upload Reference Image -->
         <section class="step-section visible" id="step-1">
+            <!-- Recent projects strip (hidden when there are no projects yet) -->
+            <div class="history-section" id="history-section" style="display:none;">
+                <div class="history-section-header">Recent Projects</div>
+                <div class="history-grid" id="history-grid"></div>
+            </div>
+
             <h2 class="step-title">Upload Reference Image</h2>
             <p class="step-subtitle">Upload a front-facing image of the object you want to turn into a 3D model.</p>
 
@@ -892,6 +1016,7 @@
             <div class="button-row">
                 <button class="btn btn-secondary" id="btn-start-over">Start Over</button>
                 <button class="btn btn-secondary" id="btn-back-views">Back to Views</button>
+                <button class="btn btn-secondary" id="btn-new-variant">New Variant</button>
                 <button class="btn btn-success" id="btn-download">Download .OBJ</button>
             </div>
         </section>
@@ -1627,15 +1752,187 @@
             viewImages.left = null;
             viewImages.right = null;
             modelFilename = null;
+            currentProjectId = null;
             loadingViews.clear();
             expandedPrompts.clear();
             fileInput.value = '';
             uploadPreview.style.display = 'none';
             btnNextStep.disabled = true;
             imageGallery.innerHTML = '';
+            variantBanner.classList.remove('visible');
             clearErrors();
             goToStep(1);
+            loadHistory();
         });
+
+        // ============================================================
+        // History panel: list / load / "New variant"
+        // ============================================================
+        const historySection = document.getElementById('history-section');
+        const historyGrid = document.getElementById('history-grid');
+        const variantBanner = document.getElementById('variant-banner');
+        const btnNewVariant = document.getElementById('btn-new-variant');
+
+        async function loadHistory() {
+            try {
+                const res = await fetch('/api/projects');
+                const data = await res.json();
+                const projects = data.projects || [];
+                if (projects.length === 0) {
+                    historySection.style.display = 'none';
+                    return;
+                }
+                historySection.style.display = 'block';
+                renderHistory(projects);
+            } catch (err) {
+                // Don't block app if history fails — just hide the panel
+                console.warn('History load failed:', err.message);
+                historySection.style.display = 'none';
+            }
+        }
+
+        function renderHistory(projects) {
+            historyGrid.innerHTML = '';
+            for (const p of projects) {
+                const card = document.createElement('div');
+                card.className = 'history-card';
+                card.title = 'Open project #' + p.id;
+
+                const thumbSrc = p.preview_image || p.front_image;
+                const status = p.model_file ? 'done' : 'draft';
+                const statusLabel = p.model_file ? 'Model' : 'Draft';
+
+                const thumb = document.createElement('div');
+                thumb.className = 'history-card-thumb';
+                if (thumbSrc) {
+                    const img = document.createElement('img');
+                    img.src = '/api/images/' + thumbSrc;
+                    img.alt = '';
+                    thumb.appendChild(img);
+                } else {
+                    const ph = document.createElement('span');
+                    ph.className = 'history-card-thumb-placeholder';
+                    ph.textContent = '?';
+                    thumb.appendChild(ph);
+                }
+
+                const meta = document.createElement('div');
+                meta.className = 'history-card-meta';
+                const idEl = document.createElement('span');
+                idEl.className = 'history-card-id';
+                idEl.textContent = '#' + p.id;
+                const statusEl = document.createElement('span');
+                statusEl.className = 'history-card-status ' + status;
+                statusEl.textContent = statusLabel;
+                meta.appendChild(idEl);
+                meta.appendChild(statusEl);
+
+                card.appendChild(thumb);
+                card.appendChild(meta);
+
+                if (p.parent_id) {
+                    const badge = document.createElement('div');
+                    badge.className = 'history-card-variant-badge';
+                    badge.textContent = '↳ #' + p.parent_id;
+                    card.appendChild(badge);
+                }
+
+                card.addEventListener('click', () => loadProject(p.id));
+                historyGrid.appendChild(card);
+            }
+        }
+
+        async function loadProject(id) {
+            clearErrors();
+            showLoading('Loading project...');
+            try {
+                const res = await fetch('/api/projects/' + id);
+                const project = await res.json();
+                if (!res.ok) throw new Error(project.error || 'Failed to load project');
+
+                currentProjectId = project.id;
+                viewImages.front = project.front_image || null;
+                viewImages.back = project.back_image || null;
+                viewImages.left = project.left_image || null;
+                viewImages.right = project.right_image || null;
+                modelFilename = project.model_file || null;
+
+                // Override per-view prompts in localStorage with whatever the
+                // project has saved. Views without saved prompts keep whatever
+                // is already in localStorage (or fall through to defaults).
+                if (project.back_prompt) savePrompt('back', project.back_prompt);
+                if (project.left_prompt) savePrompt('left', project.left_prompt);
+                if (project.right_prompt) savePrompt('right', project.right_prompt);
+
+                // Populate settings inputs from settings JSONB (if present)
+                const settings = project.settings || {};
+                if (settings.face !== undefined) {
+                    document.getElementById('setting-face').value = settings.face;
+                    document.getElementById('face-value').textContent = Number(settings.face).toLocaleString();
+                }
+                if (settings.format !== undefined) document.getElementById('setting-format').value = settings.format;
+                if (settings.resolution !== undefined) document.getElementById('setting-resolution').value = settings.resolution;
+                if (settings.model !== undefined) document.getElementById('setting-model').value = settings.model;
+                if (settings.requestType !== undefined) document.getElementById('setting-request-type').value = settings.requestType;
+
+                // Lineage banner
+                if (project.parent_id) {
+                    variantBanner.textContent = '↳ Variant of project #' + project.parent_id;
+                    variantBanner.classList.add('visible');
+                } else {
+                    variantBanner.classList.remove('visible');
+                }
+
+                renderGallery();
+                updateViewsStatus();
+
+                // If model is already done, jump straight to step 3 and load it
+                if (modelFilename) {
+                    const ext = modelFilename.split('.').pop().toLowerCase();
+                    if (ext === 'obj') {
+                        await loadModelInViewer('/api/images/' + modelFilename);
+                    } else {
+                        document.getElementById('viewer-info').innerHTML =
+                            'Format: ' + ext.toUpperCase() + '<br><br>' +
+                            '3D preview is only available for OBJ files.<br>' +
+                            'Your ' + ext.toUpperCase() + ' file is ready to download.';
+                    }
+                    btnDownload.textContent = 'Download .' + ext.toUpperCase();
+                    populateRefPanel();
+                    goToStep(3);
+                } else {
+                    goToStep(2);
+                }
+            } catch (err) {
+                showError(1, err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function createNewVariant() {
+            if (!currentProjectId) return;
+            clearErrors();
+            showLoading('Creating new variant...');
+            try {
+                const res = await fetch('/api/projects/' + currentProjectId + '/variant', { method: 'POST' });
+                const variant = await res.json();
+                if (!res.ok) throw new Error(variant.error || 'Failed to create variant');
+                await loadProject(variant.id);
+                loadHistory();
+            } catch (err) {
+                showError(3, err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        if (btnNewVariant) {
+            btnNewVariant.addEventListener('click', createNewVariant);
+        }
+
+        // Initial load — fetch history so the strip on Step 1 is populated
+        loadHistory();
     </script>
 </body>
 </html>

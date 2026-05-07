@@ -506,6 +506,65 @@ app.post("/api/generate-model", async (req, res) => {
   }
 });
 
+// ============================================================
+// Project history (list / get / variant / delete)
+// ============================================================
+
+// GET /api/projects — list current user's projects, newest first
+app.get("/api/projects", async (req, res) => {
+  try {
+    const rows = await db.listProjects(OWNER_USER_ID);
+    res.json({ projects: rows });
+  } catch (err) {
+    console.error("[DB] listProjects ERROR:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/projects/:id — full project for re-loading into the wizard
+app.get("/api/projects/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
+    const project = await db.getProject(id, OWNER_USER_ID);
+    if (!project) return res.status(404).json({ error: "Not found" });
+    res.json(project);
+  } catch (err) {
+    console.error("[DB] getProject ERROR:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/projects/:id/variant — create a "New variant" derived from the source
+app.post("/api/projects/:id/variant", async (req, res) => {
+  try {
+    const parentId = Number(req.params.id);
+    if (!Number.isInteger(parentId) || parentId <= 0) return res.status(400).json({ error: "Invalid id" });
+    const variant = await db.createVariant(parentId, OWNER_USER_ID);
+    if (!variant) return res.status(404).json({ error: "Source project not found" });
+    console.log("[DB] Created variant id=" + variant.id + " from parent=" + parentId);
+    res.json(variant);
+  } catch (err) {
+    console.error("[DB] createVariant ERROR:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/projects/:id
+app.delete("/api/projects/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
+    const deleted = await db.deleteProject(id, OWNER_USER_ID);
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    console.log("[DB] Deleted project id=" + id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[DB] deleteProject ERROR:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/status
 app.get("/api/status", (req, res) => {
   res.json({
