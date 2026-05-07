@@ -432,6 +432,58 @@ async function hitem3dPoll(token, taskId) {
 // POST /api/generate-model
 const FORMAT_EXT = { 1: "obj", 2: "glb", 3: "stl", 4: "fbx" };
 
+// Long-running HiTem3D job extracted into its own function so it can run
+// independently of the HTTP request that triggered it. Updates the DB row
+// at the end with success state (model_file, preview_image) or failure
+// (status='failed', error_message).
+async function runHitem3dJob(pid, imagePaths, views, opts, settings) {
+  const startedAt = Date.now();
+  console.log("[Job " + pid + "] Starting HiTem3D pipeline");
+  try {
+    const token = await hitem3dAuth();
+    console.log("[Job " + pid + "] Auth ok, creating task...");
+    const taskId = await hitem3dCreateTask(token, imagePaths, views, opts);
+
+    console.log("[Job " + pid + "] Polling task " + taskId + "...");
+    const taskData = await hitem3dPoll(token, taskId);
+
+    const formatNum = opts.format || 1;
+    const ext = FORMAT_EXT[formatNum] || "obj";
+
+    const results = {};
+    if (taskData.url) {
+      const modelFile = path.join(OUTPUT_DIR, taskId + "." + ext);
+      await downloadFile(taskData.url, modelFile);
+      results.model = taskId + "." + ext;
+    }
+    if (taskData.cover_url) {
+      const previewFile = path.join(OUTPUT_DIR, taskId + "_preview.png");
+      await downloadFile(taskData.cover_url, previewFile);
+      results.preview = taskId + "_preview.png";
+    }
+
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.log("[Job " + pid + "] Done in " + elapsed + "s. Results:", JSON.stringify(results));
+
+    await db.updateProject(pid, OWNER_USER_ID, {
+      model_file: results.model || null,
+      preview_image: results.preview || null,
+      settings: settings || null,
+      status: "success",
+      error_message: null,
+    });
+    console.log("[Job " + pid + "] DB updated with success");
+  } catch (err) {
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.error("[Job " + pid + "] FAILED after " + elapsed + "s:", err.message);
+    if (err.stack) console.error(err.stack);
+    await db.updateProject(pid, OWNER_USER_ID, {
+      status: "failed",
+      error_message: err.message,
+    }).catch((dbErr) => console.error("[Job " + pid + "] DB update on failure also failed:", dbErr.message));
+  }
+}
+
 app.post("/api/generate-model", async (req, res) => {
   try {
     console.log("\n[API] POST /api/generate-model");
@@ -462,45 +514,25 @@ app.post("/api/generate-model", async (req, res) => {
       if (settings.requestType) opts.requestType = Number(settings.requestType);
     }
 
-    console.log("Authenticating with HiTem3D...");
-    const token = await hitem3dAuth();
-
-    console.log("Creating 3D generation task...");
-    console.log("[HiTem3D] Views provided:", views);
-    const taskId = await hitem3dCreateTask(token, imagePaths, views, opts);
-
-    console.log("Polling for completion (task: " + taskId + ")...");
-    const taskData = await hitem3dPoll(token, taskId);
-
-    const formatNum = opts.format || 1;
-    const ext = FORMAT_EXT[formatNum] || "obj";
-
-    const results = {};
-    if (taskData.url) {
-      const modelFile = path.join(OUTPUT_DIR, taskId + "." + ext);
-      await downloadFile(taskData.url, modelFile);
-      results.model = taskId + "." + ext;
-      console.log("Model saved: " + modelFile);
-    }
-    if (taskData.cover_url) {
-      const previewFile = path.join(OUTPUT_DIR, taskId + "_preview.png");
-      await downloadFile(taskData.cover_url, previewFile);
-      results.preview = taskId + "_preview.png";
-    }
-
-    console.log("[HiTem3D] Done! Results:", JSON.stringify(results));
-
-    const updated = await db.updateProject(pid, OWNER_USER_ID, {
-      model_file: results.model || null,
-      preview_image: results.preview || null,
+    // Mark the project as processing and persist settings up front, so the
+    // frontend (or a refreshed history list) can see the in-flight state.
+    const flagged = await db.updateProject(pid, OWNER_USER_ID, {
+      status: "processing",
+      error_message: null,
       settings: settings || null,
+      model_file: null,
+      preview_image: null,
     });
-    if (!updated) console.warn("[DB] Project " + pid + " not found, skipped persistence");
-    else console.log("[DB] Updated project id=" + pid + " with model+preview");
+    if (!flagged) return res.status(404).json({ error: "Project not found" });
 
-    res.json(results);
+    // Kick off the long-running HiTem3D pipeline. Do NOT await — return now
+    // so the HTTP request closes immediately. The job will update the DB
+    // when it eventually finishes (or fails).
+    runHitem3dJob(pid, imagePaths, views, opts, settings);
+
+    res.status(202).json({ projectId: pid, status: "processing" });
   } catch (err) {
-    console.error("[HiTem3D] ERROR:", err.message);
+    console.error("[generate-model] ERROR:", err.message);
     if (err.stack) console.error(err.stack);
     res.status(500).json({ error: err.message });
   }

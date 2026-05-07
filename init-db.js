@@ -52,6 +52,11 @@ CREATE TABLE IF NOT EXISTS projects (
 
 CREATE INDEX IF NOT EXISTS projects_user_id_idx   ON projects(user_id);
 CREATE INDEX IF NOT EXISTS projects_parent_id_idx ON projects(parent_id);
+
+-- Migration: async generate-model status tracking. ADD COLUMN IF NOT EXISTS
+-- means re-running is safe even after the columns are created.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'idle';
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS error_message TEXT;
 `;
 
 const SEED_OWNER = `

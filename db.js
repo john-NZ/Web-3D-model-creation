@@ -51,6 +51,8 @@ const WRITABLE_COLUMNS = new Set([
   "model_file",
   "preview_image",
   "parent_id",
+  "status",
+  "error_message",
 ]);
 
 function pickWritable(fields) {
@@ -94,7 +96,7 @@ export async function updateProject(id, userId, fields) {
 
 export async function listProjects(userId) {
   const result = await pool.query(
-    "SELECT id, parent_id, created_at, title, front_image, preview_image, model_file " +
+    "SELECT id, parent_id, created_at, title, front_image, preview_image, model_file, status, error_message " +
     "FROM projects WHERE user_id = $1 ORDER BY created_at DESC",
     [userId]
   );

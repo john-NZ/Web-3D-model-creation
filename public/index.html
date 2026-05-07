@@ -833,6 +833,16 @@
             color: #d4a058;
         }
 
+        .history-card-status.processing {
+            background: rgba(100, 100, 255, 0.25);
+            color: #8a8aff;
+        }
+
+        .history-card-status.failed {
+            background: rgba(255, 80, 80, 0.2);
+            color: #ff7070;
+        }
+
         .history-card-variant-badge {
             position: absolute;
             top: 6px;
@@ -970,9 +980,9 @@
                         <div class="setting-group">
                             <label for="setting-request-type">Generation Mode</label>
                             <select id="setting-request-type">
-                                <option value="1">Geometry Only</option>
+                                <option value="1" selected>Geometry Only</option>
                                 <option value="2">Staged</option>
-                                <option value="3" selected>Full (Geometry + Texture)</option>
+                                <option value="3">Full (Geometry + Texture)</option>
                             </select>
                             <span class="hint">Full includes color/texture on the model</span>
                         </div>
@@ -1535,7 +1545,6 @@
 
             const settings = getSettings();
             const presentViews = filledViews();
-            showLoading(`Generating 3D model from ${presentViews.length} views... this may take several minutes`);
 
             try {
                 // Send only the views that have images, in front/back/left/right order
@@ -1548,28 +1557,70 @@
                     body: JSON.stringify({ images, views, settings, projectId: currentProjectId }),
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Failed to generate model');
+                if (!res.ok) throw new Error(data.error || 'Failed to start generation');
 
-                modelFilename = data.model;
-                const ext = modelFilename.split('.').pop().toLowerCase();
-                // Only load in 3D viewer for OBJ files; others just offer download
-                if (ext === 'obj') {
-                    await loadModelInViewer('/api/images/' + modelFilename);
-                } else {
-                    document.getElementById('viewer-info').innerHTML =
-                        `Format: ${ext.toUpperCase()}<br><br>` +
-                        `3D preview is only available for OBJ files.<br>` +
-                        `Your ${ext.toUpperCase()} file is ready to download.`;
+                // Server has accepted the job and is running it in the background.
+                // Poll the project row until status flips to success or failed.
+                const project = await pollUntilModelDone(currentProjectId);
+                if (project.status === 'failed') {
+                    throw new Error(project.error_message || 'Generation failed');
                 }
-                btnDownload.textContent = 'Download .' + ext.toUpperCase();
-                populateRefPanel();
-                goToStep(3);
+                await showCompletedModel(project);
             } catch (err) {
                 showError(2, err.message);
             } finally {
                 hideLoading();
             }
         });
+
+        // Polls /api/projects/:id every POLL_INTERVAL_MS until status is no
+        // longer 'processing'. Updates the loading overlay text with elapsed
+        // time so the user sees progress. Resolves with the final project row.
+        const POLL_INTERVAL_MS = 5000;
+        async function pollUntilModelDone(projectId) {
+            const startedAt = Date.now();
+            const tick = () => {
+                const secs = Math.floor((Date.now() - startedAt) / 1000);
+                const mins = Math.floor(secs / 60);
+                const remSecs = secs % 60;
+                const elapsed = mins > 0 ? `${mins}m ${remSecs}s` : `${secs}s`;
+                showLoading(`Generating 3D model... ${elapsed} elapsed (typically 5-25 min)`);
+            };
+            tick();
+            const interval = setInterval(tick, 1000);
+            try {
+                while (true) {
+                    const res = await fetch('/api/projects/' + projectId);
+                    if (!res.ok) throw new Error('Failed to read job status (HTTP ' + res.status + ')');
+                    const project = await res.json();
+                    if (project.status === 'success' || project.status === 'failed') {
+                        return project;
+                    }
+                    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+                }
+            } finally {
+                clearInterval(interval);
+            }
+        }
+
+        // Finalize UI for a project whose model is ready: load into the 3D
+        // viewer (OBJ only) or show download-only message, set state, jump to step 3.
+        async function showCompletedModel(project) {
+            modelFilename = project.model_file;
+            if (!modelFilename) throw new Error('Project has no model file');
+            const ext = modelFilename.split('.').pop().toLowerCase();
+            if (ext === 'obj') {
+                await loadModelInViewer('/api/images/' + modelFilename);
+            } else {
+                document.getElementById('viewer-info').innerHTML =
+                    `Format: ${ext.toUpperCase()}<br><br>` +
+                    `3D preview is only available for OBJ files.<br>` +
+                    `Your ${ext.toUpperCase()} file is ready to download.`;
+            }
+            btnDownload.textContent = 'Download .' + ext.toUpperCase();
+            populateRefPanel();
+            goToStep(3);
+        }
 
         // --- Step 3: 3D Viewer ---
         let scene, camera, renderer, controls, currentObject;
@@ -1799,8 +1850,16 @@
                 card.title = 'Open project #' + p.id;
 
                 const thumbSrc = p.preview_image || p.front_image;
-                const status = p.model_file ? 'done' : 'draft';
-                const statusLabel = p.model_file ? 'Model' : 'Draft';
+                let status, statusLabel;
+                if (p.status === 'processing') {
+                    status = 'processing'; statusLabel = 'Processing';
+                } else if (p.status === 'failed') {
+                    status = 'failed'; statusLabel = 'Failed';
+                } else if (p.model_file) {
+                    status = 'done'; statusLabel = 'Model';
+                } else {
+                    status = 'draft'; statusLabel = 'Draft';
+                }
 
                 const thumb = document.createElement('div');
                 thumb.className = 'history-card-thumb';
@@ -1886,20 +1945,24 @@
                 renderGallery();
                 updateViewsStatus();
 
-                // If model is already done, jump straight to step 3 and load it
-                if (modelFilename) {
-                    const ext = modelFilename.split('.').pop().toLowerCase();
-                    if (ext === 'obj') {
-                        await loadModelInViewer('/api/images/' + modelFilename);
+                // Three resume scenarios depending on the project's status:
+                // 1. status='processing' → job is still running on the server,
+                //    pick up polling where we left off
+                // 2. model_file set → finished, jump to step 3 with viewer
+                // 3. neither → still in editing phase, drop user on step 2
+                if (project.status === 'processing') {
+                    goToStep(2);
+                    hideLoading();
+                    const finished = await pollUntilModelDone(project.id);
+                    if (finished.status === 'failed') {
+                        showError(2, finished.error_message || 'Generation failed');
                     } else {
-                        document.getElementById('viewer-info').innerHTML =
-                            'Format: ' + ext.toUpperCase() + '<br><br>' +
-                            '3D preview is only available for OBJ files.<br>' +
-                            'Your ' + ext.toUpperCase() + ' file is ready to download.';
+                        await showCompletedModel(finished);
                     }
-                    btnDownload.textContent = 'Download .' + ext.toUpperCase();
-                    populateRefPanel();
-                    goToStep(3);
+                    return;
+                }
+                if (modelFilename) {
+                    await showCompletedModel(project);
                 } else {
                     goToStep(2);
                 }
