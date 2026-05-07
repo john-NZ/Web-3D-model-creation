@@ -25,6 +25,7 @@ out/
 # IDE / Editor folders
 .vscode/
 .idea/
+.claude/
 *.suo
 *.ntvs*
 *.njsproj
