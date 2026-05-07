@@ -53,6 +53,7 @@ const WRITABLE_COLUMNS = new Set([
   "parent_id",
   "status",
   "error_message",
+  "processing_started_at",
 ]);
 
 function pickWritable(fields) {
@@ -125,6 +126,11 @@ export async function deleteProject(id, userId) {
 export async function createVariant(parentId, userId) {
   const parent = await getProject(parentId, userId);
   if (!parent) return null;
+  // Inherit parent settings but force requestType to 1 (geometry-only). The
+  // parent's setting was a snapshot of what was used for *that* generation;
+  // a fresh variant should pick up the current default unless the user opts
+  // in to texture again before generating.
+  const variantSettings = parent.settings ? { ...parent.settings, requestType: 1 } : null;
   return createProject(userId, {
     parent_id: parent.id,
     title: parent.title ? parent.title + " (variant)" : null,
@@ -135,7 +141,7 @@ export async function createVariant(parentId, userId) {
     back_prompt: parent.back_prompt,
     left_prompt: parent.left_prompt,
     right_prompt: parent.right_prompt,
-    settings: parent.settings,
+    settings: variantSettings,
     // model_file and preview_image intentionally NOT copied
   });
 }

@@ -57,6 +57,7 @@ CREATE INDEX IF NOT EXISTS projects_parent_id_idx ON projects(parent_id);
 -- means re-running is safe even after the columns are created.
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'idle';
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;
 `;
 
 const SEED_OWNER = `

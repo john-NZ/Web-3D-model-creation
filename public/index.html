@@ -1575,12 +1575,14 @@
 
         // Polls /api/projects/:id every POLL_INTERVAL_MS until status is no
         // longer 'processing'. Updates the loading overlay text with elapsed
-        // time so the user sees progress. Resolves with the final project row.
+        // time. On the first poll, syncs `startedAt` to the server's
+        // processing_started_at so a page reload mid-job shows the true
+        // elapsed time, not zero. Resolves with the final project row.
         const POLL_INTERVAL_MS = 5000;
         async function pollUntilModelDone(projectId) {
-            const startedAt = Date.now();
+            let startedAt = Date.now();
             const tick = () => {
-                const secs = Math.floor((Date.now() - startedAt) / 1000);
+                const secs = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
                 const mins = Math.floor(secs / 60);
                 const remSecs = secs % 60;
                 const elapsed = mins > 0 ? `${mins}m ${remSecs}s` : `${secs}s`;
@@ -1589,10 +1591,16 @@
             tick();
             const interval = setInterval(tick, 1000);
             try {
+                let synced = false;
                 while (true) {
                     const res = await fetch('/api/projects/' + projectId);
                     if (!res.ok) throw new Error('Failed to read job status (HTTP ' + res.status + ')');
                     const project = await res.json();
+                    if (!synced && project.processing_started_at) {
+                        startedAt = new Date(project.processing_started_at).getTime();
+                        synced = true;
+                        tick();
+                    }
                     if (project.status === 'success' || project.status === 'failed') {
                         return project;
                     }

@@ -516,12 +516,15 @@ app.post("/api/generate-model", async (req, res) => {
 
     // Mark the project as processing and persist settings up front, so the
     // frontend (or a refreshed history list) can see the in-flight state.
+    // processing_started_at lets the frontend compute a correct elapsed time
+    // even after a page reload picks up an in-flight job.
     const flagged = await db.updateProject(pid, OWNER_USER_ID, {
       status: "processing",
       error_message: null,
       settings: settings || null,
       model_file: null,
       preview_image: null,
+      processing_started_at: new Date(),
     });
     if (!flagged) return res.status(404).json({ error: "Project not found" });
 
