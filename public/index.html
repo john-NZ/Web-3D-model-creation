@@ -870,6 +870,22 @@
         .variant-banner.visible {
             display: block;
         }
+
+        /* Stale-views banner shown after a front edit when other views exist */
+        .stale-views-banner {
+            display: none;
+            background: rgba(220, 170, 60, 0.15);
+            border: 1px solid rgba(220, 170, 60, 0.4);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #e6c878;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+
+        .stale-views-banner.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -887,6 +903,11 @@
     <main>
         <!-- Lineage banner shown when a project with parent_id is loaded -->
         <div class="variant-banner" id="variant-banner"></div>
+
+        <!-- Stale-views banner shown after a front edit when back/left/right exist -->
+        <div class="stale-views-banner" id="stale-views-banner">
+            Front image changed &mdash; back / left / right may need regeneration.
+        </div>
 
         <!-- Step 1: Upload Reference Image -->
         <section class="step-section visible" id="step-1">
@@ -1074,6 +1095,7 @@
         // Default prompts sent to OpenAI for each AI-generated view.
         // Users can edit these per view; edits persist in localStorage.
         const DEFAULT_PROMPTS = {
+            front: 'Keep the object exactly as is, but [your instruction here]',
             back: 'Show this exact object from the back view. Same object, same style, rotated 180 degrees.',
             left: 'Show this exact object from the left side view. Same object, same style, rotated 90 degrees left.',
             right: 'Show this exact object from the right side view. Same object, same style, rotated 90 degrees right.',
@@ -1318,8 +1340,8 @@
                 labelText.textContent = VIEW_LABELS[key];
                 label.appendChild(labelText);
 
-                // Replace button (for non-front views that already have an image)
-                if (key !== 'front' && viewImages[key]) {
+                // Replace button (any view that already has an image)
+                if (viewImages[key]) {
                     const replaceBtn = document.createElement('button');
                     replaceBtn.className = 'replace-btn';
                     replaceBtn.textContent = 'Replace';
@@ -1335,14 +1357,20 @@
                 card.appendChild(label);
                 card.appendChild(input);
 
-                // AI generation controls for back/left/right
-                if (key !== 'front') {
+                // AI generation/edit controls. For front: "Edit with AI" (always
+                // editing an existing image). For other views: "Generate" /
+                // "Regenerate" depending on whether one already exists.
+                {
                     const actions = document.createElement('div');
                     actions.className = 'card-actions';
 
                     const aiBtn = document.createElement('button');
                     aiBtn.className = 'card-action-btn';
-                    aiBtn.textContent = viewImages[key] ? 'Regenerate with AI' : 'Generate with AI';
+                    if (key === 'front') {
+                        aiBtn.textContent = 'Edit with AI';
+                    } else {
+                        aiBtn.textContent = viewImages[key] ? 'Regenerate with AI' : 'Generate with AI';
+                    }
                     aiBtn.disabled = !viewImages.front || loadingViews.has(key);
                     aiBtn.addEventListener('click', () => generateSingleView(key));
                     actions.appendChild(aiBtn);
@@ -1397,30 +1425,28 @@
                     card.appendChild(overlay);
                 }
 
-                // Only allow upload interactions on non-front views
-                if (key !== 'front') {
-                    uploadZone.addEventListener('click', () => input.click());
+                // Upload interactions (drag/drop, click, file picker) for any view
+                uploadZone.addEventListener('click', () => input.click());
 
-                    uploadZone.addEventListener('dragover', (e) => {
-                        e.preventDefault();
-                        uploadZone.classList.add('dragover');
-                    });
+                uploadZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadZone.classList.add('dragover');
+                });
 
-                    uploadZone.addEventListener('dragleave', () => {
-                        uploadZone.classList.remove('dragover');
-                    });
+                uploadZone.addEventListener('dragleave', () => {
+                    uploadZone.classList.remove('dragover');
+                });
 
-                    uploadZone.addEventListener('drop', (e) => {
-                        e.preventDefault();
-                        uploadZone.classList.remove('dragover');
-                        const file = e.dataTransfer.files[0];
-                        if (file) uploadViewImage(key, file);
-                    });
+                uploadZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadZone.classList.remove('dragover');
+                    const file = e.dataTransfer.files[0];
+                    if (file) uploadViewImage(key, file);
+                });
 
-                    input.addEventListener('change', (e) => {
-                        if (e.target.files[0]) uploadViewImage(key, e.target.files[0]);
-                    });
-                }
+                input.addEventListener('change', (e) => {
+                    if (e.target.files[0]) uploadViewImage(key, e.target.files[0]);
+                });
 
                 imageGallery.appendChild(card);
             }
@@ -1446,6 +1472,7 @@
                 if (!res.ok) throw new Error(data.error || 'Upload failed');
 
                 viewImages[viewName] = data.image;
+                refreshStaleViewsBanner(viewName);
                 renderGallery();
                 updateViewsStatus();
             } catch (err) {
@@ -1455,12 +1482,26 @@
             }
         }
 
+        // Show the stale-views banner after a front change if any other view
+        // exists. Hide it after a back/left/right change (the user is
+        // addressing staleness, or a fresh round of views is in progress).
+        function refreshStaleViewsBanner(changedView) {
+            if (changedView === 'front') {
+                const othersExist = ['back', 'left', 'right'].some(k => viewImages[k]);
+                staleViewsBanner.classList.toggle('visible', othersExist);
+            } else {
+                staleViewsBanner.classList.remove('visible');
+            }
+        }
+
         // --- AI Generate Views ---
         // Generate a single view. Used by per-card buttons and the bulk button.
         // Updates that card's UI as soon as its own response arrives.
         async function generateSingleView(view) {
             if (!viewImages.front) {
-                showError(2, 'Front image is required before generating other views.');
+                showError(2, view === 'front'
+                    ? 'Upload a front image before editing it.'
+                    : 'Front image is required before generating other views.');
                 return;
             }
             if (loadingViews.has(view)) return;
@@ -1484,6 +1525,7 @@
                 if (!res.ok) throw new Error(data.error || 'Failed to generate ' + view);
 
                 viewImages[view] = data.image;
+                refreshStaleViewsBanner(view);
             } catch (err) {
                 showError(2, `Failed to generate ${view}: ${err.message}`);
             } finally {
@@ -1819,6 +1861,7 @@
             btnNextStep.disabled = true;
             imageGallery.innerHTML = '';
             variantBanner.classList.remove('visible');
+            staleViewsBanner.classList.remove('visible');
             clearErrors();
             goToStep(1);
             loadHistory();
@@ -1830,6 +1873,7 @@
         const historySection = document.getElementById('history-section');
         const historyGrid = document.getElementById('history-grid');
         const variantBanner = document.getElementById('variant-banner');
+        const staleViewsBanner = document.getElementById('stale-views-banner');
         const btnNewVariant = document.getElementById('btn-new-variant');
 
         async function loadHistory() {
@@ -1927,9 +1971,14 @@
                 // Override per-view prompts in localStorage with whatever the
                 // project has saved. Views without saved prompts keep whatever
                 // is already in localStorage (or fall through to defaults).
+                if (project.front_prompt) savePrompt('front', project.front_prompt);
                 if (project.back_prompt) savePrompt('back', project.back_prompt);
                 if (project.left_prompt) savePrompt('left', project.left_prompt);
                 if (project.right_prompt) savePrompt('right', project.right_prompt);
+
+                // Loading a project is a clean slate for the stale-views banner;
+                // it'll re-appear if the user does a front edit afterwards.
+                staleViewsBanner.classList.remove('visible');
 
                 // Populate settings inputs from settings JSONB (if present)
                 const settings = project.settings || {};

@@ -78,8 +78,8 @@ app.post("/api/upload-view", upload.single("image"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No image file uploaded" });
     const view = req.body.view;
     const projectId = Number(req.body.projectId);
-    if (!["back", "left", "right"].includes(view)) {
-      return res.status(400).json({ error: "Invalid view. Must be: back, left, or right" });
+    if (!["front", "back", "left", "right"].includes(view)) {
+      return res.status(400).json({ error: "Invalid view. Must be: front, back, left, or right" });
     }
     if (!Number.isInteger(projectId) || projectId <= 0) {
       return res.status(400).json({ error: "projectId is required" });
@@ -151,8 +151,8 @@ app.post("/api/generate-view", async (req, res) => {
 
     const { frontImage, view, prompt, projectId } = req.body || {};
     if (!frontImage) return res.status(400).json({ error: "frontImage filename is required" });
-    if (!["back", "left", "right"].includes(view)) {
-      return res.status(400).json({ error: "Invalid view. Must be: back, left, or right" });
+    if (!["front", "back", "left", "right"].includes(view)) {
+      return res.status(400).json({ error: "Invalid view. Must be: front, back, left, or right" });
     }
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "prompt is required" });
