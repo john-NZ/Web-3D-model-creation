@@ -11,11 +11,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Directories
-const UPLOAD_DIR = path.join(__dirname, "uploads");
-const OUTPUT_DIR = path.join(__dirname, "output");
+// Directories. STORAGE_DIR points at the Railway Volume in production
+// (e.g. /app/storage). Locally it's unset and we fall back to the project root.
+const STORAGE_DIR = process.env.STORAGE_DIR || __dirname;
+const UPLOAD_DIR = path.join(STORAGE_DIR, "uploads");
+const OUTPUT_DIR = path.join(STORAGE_DIR, "output");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+console.log("[Storage] Using STORAGE_DIR=" + STORAGE_DIR);
 
 // Multer setup for image uploads
 const storage = multer.diskStorage({
