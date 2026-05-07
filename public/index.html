@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Model Creator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        header {
+            background: rgba(20, 20, 40, 0.95);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .steps-indicator {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .step-dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 600;
+            background: rgba(100, 100, 255, 0.15);
+            border: 2px solid rgba(100, 100, 255, 0.3);
+            color: #888;
+            transition: all 0.3s;
+        }
+
+        .step-dot.active {
+            background: rgba(100, 100, 255, 0.4);
+            border-color: #6b6bff;
+            color: #fff;
+        }
+
+        .step-dot.done {
+            background: rgba(80, 200, 120, 0.3);
+            border-color: #50c878;
+            color: #50c878;
+        }
+
+        .step-connector {
+            width: 24px;
+            height: 2px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        main {
+            padding: 32px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .step-section {
+            display: none;
+        }
+
+        .step-section.visible {
+            display: block;
+        }
+
+        .step-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .step-subtitle {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 24px;
+        }
+
+        /* Step 1: Upload */
+        .upload-area {
+            border: 2px dashed rgba(100, 100, 255, 0.4);
+            border-radius: 12px;
+            padding: 60px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(100, 100, 255, 0.05);
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #6b6bff;
+            background: rgba(100, 100, 255, 0.1);
+        }
+
+        .upload-area p {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .upload-area .hint {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .upload-preview {
+            display: none;
+            margin-top: 24px;
+            text-align: center;
+        }
+
+        .upload-preview img {
+            max-width: 300px;
+            max-height: 300px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .upload-preview .file-name {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #aaa;
+        }
+
+        /* Step 2: Image Gallery */
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .gallery-card {
+            background: rgba(30, 30, 50, 0.8);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .gallery-card.has-image .card-upload-zone { display: none; }
+        .gallery-card:not(.has-image) .card-image-wrap { display: none; }
+
+        .gallery-card img.card-img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            display: block;
+        }
+
+        .gallery-card .label {
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #ccc;
+            text-transform: capitalize;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .gallery-card .label .replace-btn {
+            font-size: 11px;
+            color: #888;
+            cursor: pointer;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 4px;
+            padding: 3px 8px;
+            transition: all 0.2s;
+        }
+
+        .gallery-card .label .replace-btn:hover {
+            color: #ccc;
+            background: rgba(255,255,255,0.12);
+        }
+
+        .card-upload-zone {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            border: 2px dashed rgba(100, 100, 255, 0.25);
+            border-radius: 6px;
+            margin: 8px;
+            transition: all 0.3s;
+            color: #666;
+            font-size: 13px;
+        }
+
+        .card-upload-zone:hover, .card-upload-zone.dragover {
+            border-color: #6b6bff;
+            background: rgba(100, 100, 255, 0.08);
+            color: #aaa;
+        }
+
+        .card-upload-zone .upload-icon {
+            font-size: 28px;
+            opacity: 0.5;
+        }
+
+        .card-upload-zone .card-hint {
+            font-size: 11px;
+            color: #555;
+            text-align: center;
+            padding: 0 12px;
+        }
+
+        .views-action-bar {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .views-action-bar .or-divider {
+            color: #555;
+            font-size: 13px;
+        }
+
+        .views-status {
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 16px;
+        }
+
+        .views-status .ready { color: #50c878; }
+
+        /* Settings Panel */
+        .settings-panel {
+            background: rgba(25, 25, 45, 0.9);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+
+        .settings-toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            background: none;
+            border: none;
+            color: #bbb;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .settings-toggle:hover { color: #fff; }
+
+        .settings-toggle .arrow {
+            transition: transform 0.2s;
+            font-size: 12px;
+        }
+
+        .settings-panel.open .settings-toggle .arrow {
+            transform: rotate(180deg);
+        }
+
+        .settings-body {
+            display: none;
+            padding: 0 18px 18px;
+        }
+
+        .settings-panel.open .settings-body {
+            display: block;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .setting-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .setting-group label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .setting-group select,
+        .setting-group input[type="number"] {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 5px;
+            color: #ddd;
+            padding: 9px 12px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .setting-group select:focus,
+        .setting-group input[type="number"]:focus {
+            border-color: rgba(100, 100, 255, 0.5);
+        }
+
+        .setting-group select option {
+            background: #1a1a2e;
+            color: #ddd;
+        }
+
+        .setting-group .hint {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .range-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .range-wrap input[type="range"] {
+            flex: 1;
+            accent-color: #6b6bff;
+            height: 4px;
+        }
+
+        .range-wrap .range-value {
+            font-size: 14px;
+            color: #ccc;
+            min-width: 90px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Step 3: Comparison Layout */
+        .comparison-layout {
+            display: flex;
+            gap: 16px;
+            height: 600px;
+        }
+
+        #viewer-container {
+            flex: 3;
+            min-width: 0;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.08);
+            position: relative;
+            background: #1a1a2e;
+        }
+
+        #viewer-container canvas {
+            display: block;
+        }
+
+        .viewer-info {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: rgba(20, 20, 40, 0.9);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            padding: 12px 16px;
+            font-size: 12px;
+            color: #aaa;
+            line-height: 1.6;
+        }
+
+        /* Reference Images Panel */
+        .ref-panel {
+            flex: 2;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            background: rgba(20, 20, 40, 0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .ref-panel-header {
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            flex-shrink: 0;
+        }
+
+        .ref-grid {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 6px;
+            padding: 6px;
+            min-height: 0;
+        }
+
+        .ref-thumb {
+            position: relative;
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+
+        .ref-thumb:hover {
+            border-color: rgba(100, 100, 255, 0.5);
+        }
+
+        .ref-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .ref-thumb .ref-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            color: #fff;
+            background: linear-gradient(transparent, rgba(0,0,0,0.7));
+            text-transform: capitalize;
+        }
+
+        /* Expanded single image view */
+        .ref-expanded {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            min-height: 0;
+        }
+
+        .ref-back-btn {
+            align-self: flex-start;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 4px;
+            color: #ccc;
+            font-size: 12px;
+            padding: 5px 10px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+
+        .ref-back-btn:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .ref-expanded img {
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+            object-fit: contain;
+            border-radius: 6px;
+        }
+
+        .ref-expanded-label {
+            text-align: center;
+            padding: 8px 0 4px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #ccc;
+            text-transform: capitalize;
+            flex-shrink: 0;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #5555ff;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #6b6bff;
+        }
+
+        .btn-primary:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.08);
+            color: #ccc;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.12);
+        }
+
+        .btn-success {
+            background: #2d8a4e;
+            color: #fff;
+        }
+
+        .btn-success:hover {
+            background: #34a05a;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        /* Progress / Loading */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .loading-overlay.visible {
+            display: flex;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(100, 100, 255, 0.2);
+            border-top-color: #6b6bff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text {
+            font-size: 16px;
+            color: #ccc;
+        }
+
+        .error-message {
+            background: rgba(255, 60, 60, 0.15);
+            border: 1px solid rgba(255, 60, 60, 0.3);
+            border-radius: 6px;
+            padding: 12px 16px;
+            color: #ff6b6b;
+            font-size: 14px;
+            margin-top: 16px;
+            display: none;
+        }
+
+        .error-message.visible {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>3D Model Creator</h1>
+        <div class="steps-indicator">
+            <div class="step-dot active" id="dot-1">1</div>
+            <div class="step-connector"></div>
+            <div class="step-dot" id="dot-2">2</div>
+            <div class="step-connector"></div>
+            <div class="step-dot" id="dot-3">3</div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Step 1: Upload Reference Image -->
+        <section class="step-section visible" id="step-1">
+            <h2 class="step-title">Upload Reference Image</h2>
+            <p class="step-subtitle">Upload a front-facing image of the object you want to turn into a 3D model.</p>
+
+            <div class="upload-area" id="upload-area">
+                <p>Drop an image here or click to browse</p>
+                <span class="hint">PNG, JPG, or WebP</span>
+            </div>
+            <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.webp" hidden>
+
+            <div class="upload-preview" id="upload-preview">
+                <img id="preview-img" src="" alt="Preview">
+                <p class="file-name" id="file-name"></p>
+            </div>
+
+            <div class="error-message" id="error-1"></div>
+
+            <div class="button-row">
+                <button class="btn btn-primary" id="btn-next-step" disabled>Next: Add Views</button>
+            </div>
+        </section>
+
+        <!-- Step 2: Add Views (manual upload or AI generate) -->
+        <section class="step-section" id="step-2">
+            <h2 class="step-title">Add Views</h2>
+            <p class="step-subtitle">Upload images for each view (front, back, left, right), or generate them with AI. You need at least the front view plus one other view. Adding all four views produces the best results.</p>
+
+            <div class="views-action-bar">
+                <button class="btn btn-secondary" id="btn-ai-generate">Generate Missing with AI</button>
+                <span class="or-divider">— or upload each view below —</span>
+            </div>
+
+            <div class="views-status" id="views-status"></div>
+
+            <div class="image-gallery" id="image-gallery"></div>
+
+            <!-- HiTem3D Settings -->
+            <div class="settings-panel" id="settings-panel">
+                <button class="settings-toggle" id="settings-toggle">
+                    <span>3D Generation Settings</span>
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="settings-body">
+                    <div class="settings-grid">
+                        <div class="setting-group full-width">
+                            <label for="setting-face">Polygon Count (faces)</label>
+                            <div class="range-wrap">
+                                <input type="range" id="setting-face" min="50000" max="2000000" step="50000" value="800000">
+                                <span class="range-value" id="face-value">800,000</span>
+                            </div>
+                            <span class="hint">Lower = faster/smaller file, higher = more detail. Default: 800,000</span>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="setting-format">Output Format</label>
+                            <select id="setting-format">
+                                <option value="1" selected>OBJ</option>
+                                <option value="2">GLB</option>
+                                <option value="3">STL</option>
+                                <option value="4">FBX</option>
+                            </select>
+                            <span class="hint">OBJ for 3D printing, GLB for web/games</span>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="setting-resolution">Resolution</label>
+                            <select id="setting-resolution">
+                                <option value="512">512 (Fast)</option>
+                                <option value="1024">1024 (Medium)</option>
+                                <option value="1536" selected>1536 (High)</option>
+                                <option value="2048">2048 (Ultra)</option>
+                            </select>
+                            <span class="hint">Internal processing resolution</span>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="setting-model">Model Version</label>
+                            <select id="setting-model">
+                                <option value="hitem3dv2.0" selected>HiTem3D v2.0</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="setting-request-type">Generation Mode</label>
+                            <select id="setting-request-type">
+                                <option value="1">Geometry Only</option>
+                                <option value="2">Staged</option>
+                                <option value="3" selected>Full (Geometry + Texture)</option>
+                            </select>
+                            <span class="hint">Full includes color/texture on the model</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="error-message" id="error-2"></div>
+
+            <div class="button-row">
+                <button class="btn btn-secondary" id="btn-back-step1">Back</button>
+                <button class="btn btn-primary" id="btn-generate-model" disabled>Generate 3D Model</button>
+            </div>
+        </section>
+
+        <!-- Step 3: View 3D Model -->
+        <section class="step-section" id="step-3">
+            <h2 class="step-title">Inspect 3D Model</h2>
+            <p class="step-subtitle">Compare your 3D model against the reference images. Click any image to enlarge it, click again to return to the grid.</p>
+
+            <div class="comparison-layout">
+                <div id="viewer-container">
+                    <div class="viewer-info" id="viewer-info">
+                        Drag to rotate | Scroll to zoom | Right-drag to pan
+                    </div>
+                </div>
+
+                <div class="ref-panel" id="ref-panel">
+                    <div class="ref-panel-header">Reference Images</div>
+                    <div class="ref-grid" id="ref-grid"></div>
+                    <div class="ref-expanded" id="ref-expanded" style="display:none;">
+                        <button class="ref-back-btn" id="ref-back-btn">&larr; All views</button>
+                        <img id="ref-expanded-img" src="" alt="">
+                        <div class="ref-expanded-label" id="ref-expanded-label"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="error-message" id="error-3"></div>
+
+            <div class="button-row">
+                <button class="btn btn-secondary" id="btn-start-over">Start Over</button>
+                <button class="btn btn-secondary" id="btn-back-views">Back to Views</button>
+                <button class="btn btn-success" id="btn-download">Download .OBJ</button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading">
+        <div class="spinner"></div>
+        <p class="loading-text" id="loading-text">Generating...</p>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+
+        // --- State ---
+        let uploadedFile = null;
+        // viewImages tracks each view: { front: "filename.png", back: null, left: null, right: null }
+        const viewImages = { front: null, back: null, left: null, right: null };
+        let modelFilename = null;
+
+        const VIEW_KEYS = ['front', 'back', 'left', 'right'];
+        const VIEW_LABELS = { front: 'Front View', back: 'Back View', left: 'Left View', right: 'Right View' };
+        const VIEW_HINTS = {
+            front: 'The front-facing side of your object',
+            back: 'The back of your object (rotated 180°)',
+            left: 'The left side of your object (rotated 90° left)',
+            right: 'The right side of your object (rotated 90° right)',
+        };
+
+        // --- DOM Elements ---
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const uploadPreview = document.getElementById('upload-preview');
+        const previewImg = document.getElementById('preview-img');
+        const fileNameEl = document.getElementById('file-name');
+        const btnNextStep = document.getElementById('btn-next-step');
+        const btnBackStep1 = document.getElementById('btn-back-step1');
+        const btnAiGenerate = document.getElementById('btn-ai-generate');
+        const btnGenerateModel = document.getElementById('btn-generate-model');
+        const btnStartOver = document.getElementById('btn-start-over');
+        const btnBackViews = document.getElementById('btn-back-views');
+        const btnDownload = document.getElementById('btn-download');
+        const refGrid = document.getElementById('ref-grid');
+        const refExpanded = document.getElementById('ref-expanded');
+        const refExpandedImg = document.getElementById('ref-expanded-img');
+        const refExpandedLabel = document.getElementById('ref-expanded-label');
+        const refBackBtn = document.getElementById('ref-back-btn');
+        const imageGallery = document.getElementById('image-gallery');
+        const viewsStatus = document.getElementById('views-status');
+        const loadingOverlay = document.getElementById('loading');
+        const loadingText = document.getElementById('loading-text');
+
+        // --- Step Navigation ---
+        function goToStep(step) {
+            document.querySelectorAll('.step-section').forEach(s => s.classList.remove('visible'));
+            document.getElementById('step-' + step).classList.add('visible');
+
+            for (let i = 1; i <= 3; i++) {
+                const dot = document.getElementById('dot-' + i);
+                dot.classList.remove('active', 'done');
+                if (i < step) dot.classList.add('done');
+                else if (i === step) dot.classList.add('active');
+            }
+        }
+
+        function showLoading(text) {
+            loadingText.textContent = text;
+            loadingOverlay.classList.add('visible');
+        }
+
+        function hideLoading() {
+            loadingOverlay.classList.remove('visible');
+        }
+
+        function showError(step, message) {
+            const el = document.getElementById('error-' + step);
+            el.textContent = message;
+            el.classList.add('visible');
+        }
+
+        function clearErrors() {
+            document.querySelectorAll('.error-message').forEach(el => {
+                el.textContent = '';
+                el.classList.remove('visible');
+            });
+        }
+
+        // --- Helpers ---
+        function allViewsReady() {
+            return VIEW_KEYS.every(k => viewImages[k]);
+        }
+
+        function canGenerate() {
+            // Need front + at least one other view
+            return viewImages.front && VIEW_KEYS.filter(k => viewImages[k]).length >= 2;
+        }
+
+        function filledViews() {
+            return VIEW_KEYS.filter(k => viewImages[k]);
+        }
+
+        function missingViews() {
+            return VIEW_KEYS.filter(k => !viewImages[k]);
+        }
+
+        function updateViewsStatus() {
+            const filled = filledViews();
+            const missing = missingViews();
+            if (missing.length === 0) {
+                viewsStatus.innerHTML = '<span class="ready">All 4 views ready!</span> You can generate the 3D model.';
+            } else if (canGenerate()) {
+                viewsStatus.innerHTML = `${filled.length}/4 views added (${filled.join(', ')}). You can generate now, or add more views for better results.`;
+            } else {
+                viewsStatus.textContent = `${filled.length}/4 views added. Add at least the front view and one other view to generate.`;
+            }
+            btnGenerateModel.disabled = !canGenerate();
+
+            // Update AI button text
+            const missingNonFront = ['back', 'left', 'right'].filter(k => !viewImages[k]);
+            if (missingNonFront.length === 0) {
+                btnAiGenerate.textContent = 'Regenerate All with AI';
+            } else if (missingNonFront.length < 3) {
+                btnAiGenerate.textContent = `Generate ${missingNonFront.join(' & ')} with AI`;
+            } else {
+                btnAiGenerate.textContent = 'Generate All Views with AI';
+            }
+        }
+
+        // --- Step 1: Upload ---
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file) handleFileSelect(file);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) handleFileSelect(e.target.files[0]);
+        });
+
+        function handleFileSelect(file) {
+            const validTypes = ['image/png', 'image/jpeg', 'image/webp'];
+            if (!validTypes.includes(file.type)) {
+                showError(1, 'Please upload a PNG, JPG, or WebP image.');
+                return;
+            }
+            clearErrors();
+            uploadedFile = file;
+            previewImg.src = URL.createObjectURL(file);
+            fileNameEl.textContent = file.name;
+            uploadPreview.style.display = 'block';
+            btnNextStep.disabled = false;
+        }
+
+        // --- Step 1 → Step 2 ---
+        btnNextStep.addEventListener('click', async () => {
+            if (!uploadedFile) return;
+            clearErrors();
+            showLoading('Uploading front image...');
+
+            try {
+                const formData = new FormData();
+                formData.append('image', uploadedFile);
+
+                const res = await fetch('/api/upload-front', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to upload image');
+
+                viewImages.front = data.image;
+                renderGallery();
+                updateViewsStatus();
+                goToStep(2);
+            } catch (err) {
+                showError(1, err.message);
+            } finally {
+                hideLoading();
+            }
+        });
+
+        btnBackStep1.addEventListener('click', () => goToStep(1));
+
+        // --- Step 2: Gallery with per-view upload ---
+        function renderGallery() {
+            imageGallery.innerHTML = '';
+
+            for (const key of VIEW_KEYS) {
+                const card = document.createElement('div');
+                card.className = 'gallery-card' + (viewImages[key] ? ' has-image' : '');
+                card.dataset.view = key;
+
+                // Image display (shown when view has an image)
+                const imgWrap = document.createElement('div');
+                imgWrap.className = 'card-image-wrap';
+                if (viewImages[key]) {
+                    const img = document.createElement('img');
+                    img.className = 'card-img';
+                    img.src = '/api/images/' + viewImages[key];
+                    img.alt = VIEW_LABELS[key];
+                    imgWrap.appendChild(img);
+                }
+
+                // Upload dropzone (shown when view has no image)
+                const uploadZone = document.createElement('div');
+                uploadZone.className = 'card-upload-zone';
+                uploadZone.innerHTML = `
+                    <div class="upload-icon">+</div>
+                    <div>Drop or click to upload</div>
+                    <div class="card-hint">${VIEW_HINTS[key]}</div>
+                `;
+
+                // Hidden file input for this card
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.png,.jpg,.jpeg,.webp';
+                input.hidden = true;
+
+                // Label row
+                const label = document.createElement('div');
+                label.className = 'label';
+                const labelText = document.createElement('span');
+                labelText.textContent = VIEW_LABELS[key];
+                label.appendChild(labelText);
+
+                // Replace button (for non-front views that already have an image)
+                if (key !== 'front' && viewImages[key]) {
+                    const replaceBtn = document.createElement('button');
+                    replaceBtn.className = 'replace-btn';
+                    replaceBtn.textContent = 'Replace';
+                    replaceBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        input.click();
+                    });
+                    label.appendChild(replaceBtn);
+                }
+
+                card.appendChild(imgWrap);
+                card.appendChild(uploadZone);
+                card.appendChild(label);
+                card.appendChild(input);
+
+                // Only allow upload interactions on non-front views
+                if (key !== 'front') {
+                    uploadZone.addEventListener('click', () => input.click());
+
+                    uploadZone.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                        uploadZone.classList.add('dragover');
+                    });
+
+                    uploadZone.addEventListener('dragleave', () => {
+                        uploadZone.classList.remove('dragover');
+                    });
+
+                    uploadZone.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        uploadZone.classList.remove('dragover');
+                        const file = e.dataTransfer.files[0];
+                        if (file) uploadViewImage(key, file);
+                    });
+
+                    input.addEventListener('change', (e) => {
+                        if (e.target.files[0]) uploadViewImage(key, e.target.files[0]);
+                    });
+                }
+
+                imageGallery.appendChild(card);
+            }
+        }
+
+        async function uploadViewImage(viewName, file) {
+            const validTypes = ['image/png', 'image/jpeg', 'image/webp'];
+            if (!validTypes.includes(file.type)) {
+                showError(2, 'Please upload a PNG, JPG, or WebP image.');
+                return;
+            }
+            clearErrors();
+            showLoading(`Uploading ${viewName} view...`);
+
+            try {
+                const formData = new FormData();
+                formData.append('image', file);
+                formData.append('view', viewName);
+
+                const res = await fetch('/api/upload-view', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+                viewImages[viewName] = data.image;
+                renderGallery();
+                updateViewsStatus();
+            } catch (err) {
+                showError(2, err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // --- AI Generate Views ---
+        btnAiGenerate.addEventListener('click', async () => {
+            if (!uploadedFile) return;
+            clearErrors();
+
+            const toGenerate = ['back', 'left', 'right'].filter(k => !viewImages[k]);
+            if (toGenerate.length === 0) {
+                // Regenerate all three
+                toGenerate.push('back', 'left', 'right');
+            }
+
+            showLoading(`Generating ${toGenerate.join(', ')} views with AI... this may take 30-60 seconds`);
+
+            try {
+                const formData = new FormData();
+                formData.append('image', uploadedFile);
+
+                const res = await fetch('/api/generate-views', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to generate views');
+
+                // data.images = [front, back, left, right]
+                // Update only the views we wanted to generate (keep manually uploaded ones if regenerating selectively)
+                // But since the API always generates all 3, we map them in
+                viewImages.front = data.images[0];
+                viewImages.back = data.images[1];
+                viewImages.left = data.images[2];
+                viewImages.right = data.images[3];
+
+                renderGallery();
+                updateViewsStatus();
+            } catch (err) {
+                showError(2, err.message);
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // --- Settings Panel ---
+        const settingsPanel = document.getElementById('settings-panel');
+        const settingsToggle = document.getElementById('settings-toggle');
+        const faceSlider = document.getElementById('setting-face');
+        const faceValue = document.getElementById('face-value');
+
+        settingsToggle.addEventListener('click', () => {
+            settingsPanel.classList.toggle('open');
+        });
+
+        faceSlider.addEventListener('input', () => {
+            faceValue.textContent = Number(faceSlider.value).toLocaleString();
+        });
+
+        function getSettings() {
+            return {
+                face: Number(document.getElementById('setting-face').value),
+                format: Number(document.getElementById('setting-format').value),
+                resolution: document.getElementById('setting-resolution').value,
+                model: document.getElementById('setting-model').value,
+                requestType: Number(document.getElementById('setting-request-type').value),
+            };
+        }
+
+        const FORMAT_EXTENSIONS = { 1: '.obj', 2: '.glb', 3: '.stl', 4: '.fbx' };
+        const FORMAT_LABELS = { 1: 'OBJ', 2: 'GLB', 3: 'STL', 4: 'FBX' };
+
+        // --- Step 2 → 3: Generate 3D Model ---
+        btnGenerateModel.addEventListener('click', async () => {
+            if (!canGenerate()) return;
+            clearErrors();
+
+            const settings = getSettings();
+            const presentViews = filledViews();
+            showLoading(`Generating 3D model from ${presentViews.length} views... this may take several minutes`);
+
+            try {
+                // Send only the views that have images, in front/back/left/right order
+                const images = presentViews.map(k => viewImages[k]);
+                const views = presentViews;
+
+                const res = await fetch('/api/generate-model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ images, views, settings }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to generate model');
+
+                modelFilename = data.model;
+                const ext = modelFilename.split('.').pop().toLowerCase();
+                // Only load in 3D viewer for OBJ files; others just offer download
+                if (ext === 'obj') {
+                    await loadModelInViewer('/api/images/' + modelFilename);
+                } else {
+                    document.getElementById('viewer-info').innerHTML =
+                        `Format: ${ext.toUpperCase()}<br><br>` +
+                        `3D preview is only available for OBJ files.<br>` +
+                        `Your ${ext.toUpperCase()} file is ready to download.`;
+                }
+                btnDownload.textContent = 'Download .' + ext.toUpperCase();
+                populateRefPanel();
+                goToStep(3);
+            } catch (err) {
+                showError(2, err.message);
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // --- Step 3: 3D Viewer ---
+        let scene, camera, renderer, controls, currentObject;
+
+        function initViewer() {
+            const container = document.getElementById('viewer-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.01, 10000);
+            camera.position.set(0, 2, 5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.screenSpacePanning = true;
+
+            // Lighting
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const dir1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dir1.position.set(5, 10, 7);
+            scene.add(dir1);
+            const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
+            dir2.position.set(-5, -3, -5);
+            scene.add(dir2);
+
+            // Grid
+            scene.add(new THREE.GridHelper(10, 20, 0x444466, 0x333355));
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            // Resize handling
+            const resizeObserver = new ResizeObserver(() => {
+                const w = container.clientWidth;
+                const h = container.clientHeight;
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+                renderer.setSize(w, h);
+            });
+            resizeObserver.observe(container);
+        }
+
+        async function loadModelInViewer(url) {
+            if (!scene) initViewer();
+
+            // Remove previous
+            if (currentObject) {
+                scene.remove(currentObject);
+                currentObject.traverse((child) => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                        else child.material.dispose();
+                    }
+                });
+            }
+
+            const res = await fetch(url);
+            const objText = await res.text();
+
+            const loader = new OBJLoader();
+            const object = loader.parse(objText);
+
+            object.traverse((child) => {
+                if (child.isMesh) {
+                    child.material = new THREE.MeshPhongMaterial({
+                        color: 0x7799cc,
+                        specular: 0x222222,
+                        shininess: 30,
+                        flatShading: false,
+                    });
+                }
+            });
+
+            // Center and scale
+            const box = new THREE.Box3().setFromObject(object);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            object.position.sub(center);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 4 / maxDim;
+            object.scale.setScalar(scale);
+
+            scene.add(object);
+            currentObject = object;
+
+            // Position camera
+            const scaledSize = size.clone().multiplyScalar(scale);
+            const distance = Math.max(scaledSize.x, scaledSize.y, scaledSize.z) * 2;
+            camera.position.set(distance * 0.7, distance * 0.5, distance * 0.7);
+            controls.target.set(0, 0, 0);
+            controls.update();
+
+            // Update info
+            let vertCount = 0;
+            object.traverse((child) => {
+                if (child.isMesh && child.geometry?.attributes?.position) {
+                    vertCount += child.geometry.attributes.position.count;
+                }
+            });
+            document.getElementById('viewer-info').innerHTML =
+                `Vertices: ${vertCount.toLocaleString()}<br>` +
+                `Size: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}<br><br>` +
+                `Drag to rotate | Scroll to zoom | Right-drag to pan`;
+        }
+
+        // --- Reference Image Panel ---
+        function populateRefPanel() {
+            refGrid.innerHTML = '';
+            refExpanded.style.display = 'none';
+            refGrid.style.display = '';
+
+            const present = filledViews();
+            for (const key of present) {
+                const thumb = document.createElement('div');
+                thumb.className = 'ref-thumb';
+
+                const img = document.createElement('img');
+                img.src = '/api/images/' + viewImages[key];
+                img.alt = VIEW_LABELS[key];
+
+                const label = document.createElement('div');
+                label.className = 'ref-label';
+                label.textContent = VIEW_LABELS[key];
+
+                thumb.appendChild(img);
+                thumb.appendChild(label);
+
+                thumb.addEventListener('click', () => expandRefImage(key));
+
+                refGrid.appendChild(thumb);
+            }
+        }
+
+        function expandRefImage(key) {
+            refGrid.style.display = 'none';
+            refExpandedImg.src = '/api/images/' + viewImages[key];
+            refExpandedLabel.textContent = VIEW_LABELS[key];
+            refExpanded.style.display = 'flex';
+        }
+
+        refBackBtn.addEventListener('click', () => {
+            refExpanded.style.display = 'none';
+            refGrid.style.display = '';
+        });
+
+        // --- Download ---
+        btnDownload.addEventListener('click', () => {
+            if (!modelFilename) return;
+            const a = document.createElement('a');
+            a.href = '/api/images/' + modelFilename;
+            a.download = modelFilename;
+            a.click();
+        });
+
+        // --- Back to Views (preserve images & settings, return to step 2) ---
+        btnBackViews.addEventListener('click', () => {
+            clearErrors();
+            renderGallery();
+            updateViewsStatus();
+            goToStep(2);
+        });
+
+        // --- Start Over ---
+        btnStartOver.addEventListener('click', () => {
+            uploadedFile = null;
+            viewImages.front = null;
+            viewImages.back = null;
+            viewImages.left = null;
+            viewImages.right = null;
+            modelFilename = null;
+            fileInput.value = '';
+            uploadPreview.style.display = 'none';
+            btnNextStep.disabled = true;
+            imageGallery.innerHTML = '';
+            clearErrors();
+            goToStep(1);
+        });
+    </script>
+</body>
+</html>

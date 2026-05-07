@@ -1,0 +1,12 @@
+{
+  "name": "3d-webviewer",
+  "version": "1.0.0",
+  "description": "A simple Three.js-based .obj file viewer for 3D print inspection",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

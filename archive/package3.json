@@ -1,0 +1,14 @@
+{
+  "name": "openai-image-generator",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Generate images using OpenAI's gpt-image-2 model",
+  "main": "generate.js",
+  "scripts": {
+    "generate": "node generate.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "openai": "^6.36.0"
+  }
+}
