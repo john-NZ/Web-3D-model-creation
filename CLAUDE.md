@@ -36,7 +36,8 @@ archive/               — Original standalone scripts (generate.js, 3Dviewer.js
 
 - `POST /api/upload-front` — Upload front reference image, copies to output dir with timestamp
 - `POST /api/upload-view` — Upload a single view image (back/left/right), copies to output dir
-- `POST /api/generate-views` — Accepts reference image, calls OpenAI `/v1/images/edits` three times (back/left/right prompts), returns all 4 filenames
+- `POST /api/generate-view` — Accepts JSON `{ frontImage, view, prompt }`, calls OpenAI `/v1/images/edits` once for the requested view (back/left/right) using the user-supplied prompt and the already-uploaded front image, returns the new filename
+- `POST /api/generate-views` — Bulk endpoint: accepts reference image, calls OpenAI `/v1/images/edits` three times with hard-coded prompts, returns all 4 filenames. Superseded by `/api/generate-view` (see Potentially Redundant Code)
 - `POST /api/generate-model` — Accepts array of image filenames + view labels array + optional settings, authenticates with HiTem3D, computes `multi_images_bit` bitmask from the view labels, submits multi-view task, polls until complete, downloads result, returns model filename
 - `GET /api/status` — Health check showing which API keys are configured
 - `GET /api/images/*` — Static serving of generated images and models from `output/`
@@ -91,6 +92,12 @@ HITEM3D_CLIENT_SECRET=<secret>
 - [x] Support multiple output formats (OBJ/GLB/STL/FBX) with appropriate viewer/download handling
 - [ ] Test end-to-end flow with live API keys
 - [ ] Add GLB/STL/FBX viewer support (currently only OBJ gets live 3D preview; other formats show download-only message)
+
+## Potentially Redundant Code
+
+Code that has been superseded but is left in place pending review. Once the replacement is confirmed working end-to-end, consider removing.
+
+- `POST /api/generate-views` ([server.js](server.js)) — bulk endpoint that generated all 3 views from hard-coded prompts in one call. Superseded by `POST /api/generate-view` (singular), which the frontend now calls once per view (in parallel) so the user can edit each prompt and generate views independently. Kept for now in case the bulk path is needed again.
 
 ## Key Technical Notes
 

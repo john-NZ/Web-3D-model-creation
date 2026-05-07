@@ -119,6 +119,45 @@ async function openaiEditImage(apiKey, prompt, imagePath, opts = {}) {
   return Buffer.from(data.data[0].b64_json, "base64");
 }
 
+// POST /api/generate-view
+// Generates a single view (back/left/right) using a custom prompt and the
+// already-uploaded front image (kept on disk in OUTPUT_DIR).
+app.post("/api/generate-view", async (req, res) => {
+  try {
+    console.log("\n[API] POST /api/generate-view");
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY not configured" });
+
+    const { frontImage, view, prompt } = req.body || {};
+    if (!frontImage) return res.status(400).json({ error: "frontImage filename is required" });
+    if (!["back", "left", "right"].includes(view)) {
+      return res.status(400).json({ error: "Invalid view. Must be: back, left, or right" });
+    }
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+      return res.status(400).json({ error: "prompt is required" });
+    }
+
+    const refPath = path.join(OUTPUT_DIR, frontImage);
+    if (!fs.existsSync(refPath)) {
+      return res.status(400).json({ error: "Front image not found: " + frontImage });
+    }
+
+    console.log("[OpenAI] Generating " + view + " view from " + frontImage);
+    console.log("[OpenAI] Prompt: " + prompt);
+
+    const imgBuffer = await openaiEditImage(apiKey, prompt, refPath);
+    const fileName = Date.now() + "-" + view + ".png";
+    fs.writeFileSync(path.join(OUTPUT_DIR, fileName), imgBuffer);
+    console.log("[OpenAI] Saved: " + fileName);
+
+    res.json({ image: fileName });
+  } catch (err) {
+    console.error("[OpenAI] ERROR:", err.message);
+    if (err.stack) console.error(err.stack);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/generate-views
 app.post("/api/generate-views", upload.single("image"), async (req, res) => {
   try {

@@ -152,6 +152,144 @@
             border: 1px solid rgba(255,255,255,0.08);
             border-radius: 8px;
             overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 15, 30, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 5;
+            color: #ddd;
+            font-size: 12px;
+        }
+
+        .card-loading-overlay .mini-spinner {
+            width: 28px;
+            height: 28px;
+            border: 3px solid rgba(100, 100, 255, 0.25);
+            border-top-color: #6b6bff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+            padding: 0 12px 10px;
+            align-items: center;
+        }
+
+        .card-action-btn {
+            font-size: 12px;
+            color: #ddd;
+            cursor: pointer;
+            background: rgba(100, 100, 255, 0.18);
+            border: 1px solid rgba(100, 100, 255, 0.35);
+            border-radius: 5px;
+            padding: 6px 10px;
+            transition: all 0.2s;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .card-action-btn:hover {
+            background: rgba(100, 100, 255, 0.3);
+            color: #fff;
+        }
+
+        .card-action-btn:disabled {
+            background: rgba(80, 80, 100, 0.2);
+            border-color: rgba(255,255,255,0.08);
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .card-prompt-toggle {
+            font-size: 11px;
+            color: #888;
+            cursor: pointer;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 5px;
+            padding: 6px 8px;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .card-prompt-toggle:hover {
+            color: #ccc;
+            border-color: rgba(255,255,255,0.25);
+        }
+
+        .card-prompt-toggle .arrow {
+            display: inline-block;
+            font-size: 9px;
+            margin-left: 3px;
+            transition: transform 0.2s;
+        }
+
+        .card-prompt-toggle.open .arrow {
+            transform: rotate(180deg);
+        }
+
+        .card-prompt-editor {
+            display: none;
+            padding: 0 12px 12px;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .card-prompt-editor.open {
+            display: flex;
+        }
+
+        .card-prompt-editor textarea {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 5px;
+            color: #ddd;
+            padding: 8px 10px;
+            font-size: 12px;
+            font-family: inherit;
+            outline: none;
+            resize: vertical;
+            min-height: 70px;
+            transition: border-color 0.2s;
+        }
+
+        .card-prompt-editor textarea:focus {
+            border-color: rgba(100, 100, 255, 0.5);
+        }
+
+        .card-prompt-reset {
+            align-self: flex-start;
+            background: none;
+            border: none;
+            color: #6b6bff;
+            font-size: 11px;
+            cursor: pointer;
+            padding: 0;
+            text-decoration: underline;
+            opacity: 0.8;
+        }
+
+        .card-prompt-reset:hover {
+            opacity: 1;
+        }
+
+        .card-prompt-reset:disabled {
+            color: #555;
+            cursor: default;
+            text-decoration: none;
+            opacity: 1;
         }
 
         .gallery-card.has-image .card-upload-zone { display: none; }
@@ -794,6 +932,47 @@
             right: 'The right side of your object (rotated 90° right)',
         };
 
+        // Default prompts sent to OpenAI for each AI-generated view.
+        // Users can edit these per view; edits persist in localStorage.
+        const DEFAULT_PROMPTS = {
+            back: 'Show this exact object from the back view. Same object, same style, rotated 180 degrees.',
+            left: 'Show this exact object from the left side view. Same object, same style, rotated 90 degrees left.',
+            right: 'Show this exact object from the right side view. Same object, same style, rotated 90 degrees right.',
+        };
+
+        const PROMPT_STORAGE_KEY = 'view-prompts-v1';
+        const loadingViews = new Set();      // views currently generating
+        const expandedPrompts = new Set();   // views with prompt editor open
+
+        function loadStoredPrompts() {
+            try {
+                const raw = localStorage.getItem(PROMPT_STORAGE_KEY);
+                return raw ? JSON.parse(raw) : {};
+            } catch { return {}; }
+        }
+
+        function savePrompt(view, text) {
+            const all = loadStoredPrompts();
+            all[view] = text;
+            localStorage.setItem(PROMPT_STORAGE_KEY, JSON.stringify(all));
+        }
+
+        function clearStoredPrompt(view) {
+            const all = loadStoredPrompts();
+            delete all[view];
+            localStorage.setItem(PROMPT_STORAGE_KEY, JSON.stringify(all));
+        }
+
+        function getPrompt(view) {
+            const stored = loadStoredPrompts();
+            return stored[view] !== undefined ? stored[view] : DEFAULT_PROMPTS[view];
+        }
+
+        function isPromptCustomized(view) {
+            const stored = loadStoredPrompts();
+            return stored[view] !== undefined && stored[view] !== DEFAULT_PROMPTS[view];
+        }
+
         // --- DOM Elements ---
         const uploadArea = document.getElementById('upload-area');
         const fileInput = document.getElementById('file-input');
@@ -1016,6 +1195,68 @@
                 card.appendChild(label);
                 card.appendChild(input);
 
+                // AI generation controls for back/left/right
+                if (key !== 'front') {
+                    const actions = document.createElement('div');
+                    actions.className = 'card-actions';
+
+                    const aiBtn = document.createElement('button');
+                    aiBtn.className = 'card-action-btn';
+                    aiBtn.textContent = viewImages[key] ? 'Regenerate with AI' : 'Generate with AI';
+                    aiBtn.disabled = !viewImages.front || loadingViews.has(key);
+                    aiBtn.addEventListener('click', () => generateSingleView(key));
+                    actions.appendChild(aiBtn);
+
+                    const promptToggle = document.createElement('button');
+                    promptToggle.className = 'card-prompt-toggle' + (expandedPrompts.has(key) ? ' open' : '');
+                    promptToggle.innerHTML = 'Edit prompt <span class="arrow">&#9660;</span>';
+                    promptToggle.addEventListener('click', () => {
+                        if (expandedPrompts.has(key)) expandedPrompts.delete(key);
+                        else expandedPrompts.add(key);
+                        renderGallery();
+                    });
+                    actions.appendChild(promptToggle);
+
+                    card.appendChild(actions);
+
+                    // Prompt editor (collapsible)
+                    const editor = document.createElement('div');
+                    editor.className = 'card-prompt-editor' + (expandedPrompts.has(key) ? ' open' : '');
+
+                    const textarea = document.createElement('textarea');
+                    textarea.value = getPrompt(key);
+                    textarea.spellcheck = false;
+                    textarea.addEventListener('input', (e) => {
+                        savePrompt(key, e.target.value);
+                        resetBtn.disabled = !isPromptCustomized(key);
+                    });
+
+                    const resetBtn = document.createElement('button');
+                    resetBtn.className = 'card-prompt-reset';
+                    resetBtn.textContent = 'Reset to default';
+                    resetBtn.disabled = !isPromptCustomized(key);
+                    resetBtn.addEventListener('click', () => {
+                        clearStoredPrompt(key);
+                        textarea.value = DEFAULT_PROMPTS[key];
+                        resetBtn.disabled = true;
+                    });
+
+                    editor.appendChild(textarea);
+                    editor.appendChild(resetBtn);
+                    card.appendChild(editor);
+                }
+
+                // Loading overlay (shown while this view is generating)
+                if (loadingViews.has(key)) {
+                    const overlay = document.createElement('div');
+                    overlay.className = 'card-loading-overlay';
+                    overlay.innerHTML = `
+                        <div class="mini-spinner"></div>
+                        <div>Generating ${key}...</div>
+                    `;
+                    card.appendChild(overlay);
+                }
+
                 // Only allow upload interactions on non-front views
                 if (key !== 'front') {
                     uploadZone.addEventListener('click', () => input.click());
@@ -1074,40 +1315,57 @@
         }
 
         // --- AI Generate Views ---
-        btnAiGenerate.addEventListener('click', async () => {
-            if (!uploadedFile) return;
-            clearErrors();
-
-            const toGenerate = ['back', 'left', 'right'].filter(k => !viewImages[k]);
-            if (toGenerate.length === 0) {
-                // Regenerate all three
-                toGenerate.push('back', 'left', 'right');
+        // Generate a single view. Used by per-card buttons and the bulk button.
+        // Updates that card's UI as soon as its own response arrives.
+        async function generateSingleView(view) {
+            if (!viewImages.front) {
+                showError(2, 'Front image is required before generating other views.');
+                return;
             }
+            if (loadingViews.has(view)) return;
 
-            showLoading(`Generating ${toGenerate.join(', ')} views with AI... this may take 30-60 seconds`);
+            clearErrors();
+            loadingViews.add(view);
+            renderGallery();
 
             try {
-                const formData = new FormData();
-                formData.append('image', uploadedFile);
-
-                const res = await fetch('/api/generate-views', { method: 'POST', body: formData });
+                const res = await fetch('/api/generate-view', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        frontImage: viewImages.front,
+                        view,
+                        prompt: getPrompt(view),
+                    }),
+                });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Failed to generate views');
+                if (!res.ok) throw new Error(data.error || 'Failed to generate ' + view);
 
-                // data.images = [front, back, left, right]
-                // Update only the views we wanted to generate (keep manually uploaded ones if regenerating selectively)
-                // But since the API always generates all 3, we map them in
-                viewImages.front = data.images[0];
-                viewImages.back = data.images[1];
-                viewImages.left = data.images[2];
-                viewImages.right = data.images[3];
-
+                viewImages[view] = data.image;
+            } catch (err) {
+                showError(2, `Failed to generate ${view}: ${err.message}`);
+            } finally {
+                loadingViews.delete(view);
                 renderGallery();
                 updateViewsStatus();
-            } catch (err) {
-                showError(2, err.message);
+            }
+        }
+
+        // Bulk generate: fires all needed views in parallel; each card updates as
+        // soon as its own response lands (no waiting for the slowest one).
+        btnAiGenerate.addEventListener('click', async () => {
+            if (!viewImages.front) return;
+            clearErrors();
+
+            const missing = ['back', 'left', 'right'].filter(k => !viewImages[k]);
+            const toGenerate = missing.length === 0 ? ['back', 'left', 'right'] : missing;
+
+            // Disable bulk button while generating; per-card buttons disable themselves
+            btnAiGenerate.disabled = true;
+            try {
+                await Promise.all(toGenerate.map(v => generateSingleView(v)));
             } finally {
-                hideLoading();
+                btnAiGenerate.disabled = false;
             }
         });
 
@@ -1362,6 +1620,8 @@
             viewImages.left = null;
             viewImages.right = null;
             modelFilename = null;
+            loadingViews.clear();
+            expandedPrompts.clear();
             fileInput.value = '';
             uploadPreview.style.display = 'none';
             btnNextStep.disabled = true;
