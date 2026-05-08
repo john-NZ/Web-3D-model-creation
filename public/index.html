@@ -1037,6 +1037,7 @@
 
             <div class="button-row">
                 <button class="btn btn-secondary" id="btn-back-step1">Back</button>
+                <button class="btn btn-secondary" id="btn-view-existing-model" style="display:none;">View 3D Model</button>
                 <button class="btn btn-primary" id="btn-generate-model" disabled>Generate 3D Model</button>
             </div>
         </section>
@@ -1166,6 +1167,7 @@
         const btnBackStep1 = document.getElementById('btn-back-step1');
         const btnAiGenerate = document.getElementById('btn-ai-generate');
         const btnGenerateModel = document.getElementById('btn-generate-model');
+        const btnViewExistingModel = document.getElementById('btn-view-existing-model');
         const btnStartOver = document.getElementById('btn-start-over');
         const btnBackViews = document.getElementById('btn-back-views');
         const btnDownload = document.getElementById('btn-download');
@@ -1190,6 +1192,13 @@
                 if (i < step) dot.classList.add('done');
                 else if (i === step) dot.classList.add('active');
             }
+        }
+
+        // Show the "View 3D Model" button on Step 2 only when a model file
+        // exists for the loaded project. Call this anywhere modelFilename
+        // changes (loadProject, showCompletedModel, btnStartOver, btnNextStep).
+        function updateViewModelButtonVisibility() {
+            btnViewExistingModel.style.display = modelFilename ? '' : 'none';
         }
 
         function showLoading(text) {
@@ -1319,6 +1328,7 @@
                 expandedPrompts.clear();
                 variantBanner.classList.remove('visible');
                 staleViewsBanner.classList.remove('visible');
+                updateViewModelButtonVisibility();
 
                 currentProjectId = data.projectId;
                 renderGallery();
@@ -1615,6 +1625,20 @@
         const FORMAT_EXTENSIONS = { 1: '.obj', 2: '.glb', 3: '.stl', 4: '.fbx' };
         const FORMAT_LABELS = { 1: 'OBJ', 2: 'GLB', 3: 'STL', 4: 'FBX' };
 
+        // --- Step 2 → 3: View existing model (no regeneration) ---
+        // Shown only when modelFilename is set. Reuses showCompletedModel so
+        // the viewer logic stays in one place; if the OBJ is already loaded
+        // in Three.js, the browser's HTTP cache will return the file fast.
+        btnViewExistingModel.addEventListener('click', async () => {
+            if (!modelFilename) return;
+            clearErrors();
+            try {
+                await showCompletedModel({ model_file: modelFilename });
+            } catch (err) {
+                showError(2, err.message);
+            }
+        });
+
         // --- Step 2 → 3: Generate 3D Model ---
         btnGenerateModel.addEventListener('click', async () => {
             if (!canGenerate()) return;
@@ -1693,6 +1717,7 @@
         async function showCompletedModel(project) {
             modelFilename = project.model_file;
             if (!modelFilename) throw new Error('Project has no model file');
+            updateViewModelButtonVisibility();
             const ext = modelFilename.split('.').pop().toLowerCase();
             if (ext === 'obj') {
                 await loadModelInViewer('/api/images/' + modelFilename);
@@ -1891,6 +1916,7 @@
             currentProjectId = null;
             loadingViews.clear();
             expandedPrompts.clear();
+            updateViewModelButtonVisibility();
             fileInput.value = '';
             uploadPreview.style.display = 'none';
             btnNextStep.disabled = true;
@@ -2002,6 +2028,7 @@
                 viewImages.left = project.left_image || null;
                 viewImages.right = project.right_image || null;
                 modelFilename = project.model_file || null;
+                updateViewModelButtonVisibility();
 
                 // Override per-view prompts in localStorage with whatever the
                 // project has saved. Views without saved prompts keep whatever
