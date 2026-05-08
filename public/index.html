@@ -1306,7 +1306,20 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to upload image');
 
+                // Fresh project: clear any leftover state from a previously
+                // loaded project so Step 2 doesn't show its old back/left/right
+                // (or its model, banners, in-flight indicators). Don't touch
+                // localStorage prompts — those are user defaults across projects.
                 viewImages.front = data.image;
+                viewImages.back = null;
+                viewImages.left = null;
+                viewImages.right = null;
+                modelFilename = null;
+                loadingViews.clear();
+                expandedPrompts.clear();
+                variantBanner.classList.remove('visible');
+                staleViewsBanner.classList.remove('visible');
+
                 currentProjectId = data.projectId;
                 renderGallery();
                 updateViewsStatus();
