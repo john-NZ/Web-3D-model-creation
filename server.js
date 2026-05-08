@@ -100,6 +100,37 @@ app.post("/api/upload-view", upload.single("image"), async (req, res) => {
   }
 });
 
+// POST /api/clear-view
+// Remove a non-front view from a project. Sets <view>_image and
+// <view>_prompt to NULL. Front is required and not removable. Files on
+// disk are intentionally NOT deleted — they may be referenced by variant
+// projects. The existing /api/generate-model already handles a project
+// with fewer than 4 views via multi_images_bit, so no other change is
+// needed downstream.
+app.post("/api/clear-view", async (req, res) => {
+  try {
+    console.log("\n[API] POST /api/clear-view");
+    const { projectId, view } = req.body || {};
+    if (!["back", "left", "right"].includes(view)) {
+      return res.status(400).json({ error: "Invalid view. Must be: back, left, or right" });
+    }
+    const pid = Number(projectId);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return res.status(400).json({ error: "projectId is required" });
+    }
+    const updated = await db.updateProject(pid, OWNER_USER_ID, {
+      [view + "_image"]: null,
+      [view + "_prompt"]: null,
+    });
+    if (!updated) return res.status(404).json({ error: "Project not found" });
+    console.log("[DB] Cleared " + view + " on project id=" + pid);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[clear-view] ERROR:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================================
 // OpenAI Image Generation
 // ============================================================

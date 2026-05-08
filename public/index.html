@@ -347,6 +347,24 @@
             background: rgba(255,255,255,0.12);
         }
 
+        .gallery-card .label .remove-btn {
+            font-size: 11px;
+            color: #c46c6c;
+            cursor: pointer;
+            background: rgba(255, 80, 80, 0.08);
+            border: 1px solid rgba(255, 80, 80, 0.2);
+            border-radius: 4px;
+            padding: 3px 8px;
+            margin-left: 6px;
+            transition: all 0.2s;
+        }
+
+        .gallery-card .label .remove-btn:hover {
+            color: #ff8a8a;
+            background: rgba(255, 80, 80, 0.18);
+            border-color: rgba(255, 80, 80, 0.4);
+        }
+
         .card-upload-zone {
             aspect-ratio: 1;
             display: flex;
@@ -1397,6 +1415,20 @@
                     label.appendChild(replaceBtn);
                 }
 
+                // Remove button: only for non-front views with an image. Front
+                // is required and never removable. Clears both the image and
+                // the saved prompt on the project row server-side.
+                if (key !== 'front' && viewImages[key]) {
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-btn';
+                    removeBtn.textContent = 'Remove';
+                    removeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        clearView(key);
+                    });
+                    label.appendChild(removeBtn);
+                }
+
                 card.appendChild(imgWrap);
                 card.appendChild(uploadZone);
                 card.appendChild(label);
@@ -1494,6 +1526,37 @@
                 });
 
                 imageGallery.appendChild(card);
+            }
+        }
+
+        // Remove a back/left/right view from the loaded project. Server
+        // nulls out <view>_image and <view>_prompt; we mirror that locally
+        // and re-render. The orphaned file on the volume is intentionally
+        // left alone (variants may reference it).
+        async function clearView(view) {
+            if (!viewImages[view]) return;
+            if (!confirm(`Remove the ${view} view?`)) return;
+
+            clearErrors();
+            showLoading(`Removing ${view} view...`);
+
+            try {
+                const res = await fetch('/api/clear-view', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projectId: currentProjectId, view }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to clear view');
+
+                viewImages[view] = null;
+                staleViewsBanner.classList.remove('visible');
+                renderGallery();
+                updateViewsStatus();
+            } catch (err) {
+                showError(2, err.message);
+            } finally {
+                hideLoading();
             }
         }
 
