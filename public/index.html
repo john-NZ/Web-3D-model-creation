@@ -29,6 +29,24 @@
             color: #fff;
         }
 
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .header-link {
+            color: #888;
+            text-decoration: none;
+            font-size: 13px;
+            transition: color 0.2s;
+            white-space: nowrap;
+        }
+
+        .header-link:hover {
+            color: #ccc;
+        }
+
         .steps-indicator {
             display: flex;
             gap: 8px;
@@ -891,12 +909,16 @@
 <body>
     <header>
         <h1>3D Model Creator</h1>
-        <div class="steps-indicator">
-            <div class="step-dot active" id="dot-1">1</div>
-            <div class="step-connector"></div>
-            <div class="step-dot" id="dot-2">2</div>
-            <div class="step-connector"></div>
-            <div class="step-dot" id="dot-3">3</div>
+        <div class="header-right">
+            <a class="header-link" href="https://platform.hitem3d.ai/console/usage/detail"
+               target="_blank" rel="noopener noreferrer">HiTem3D Usage &#8599;</a>
+            <div class="steps-indicator">
+                <div class="step-dot active" id="dot-1">1</div>
+                <div class="step-connector"></div>
+                <div class="step-dot" id="dot-2">2</div>
+                <div class="step-connector"></div>
+                <div class="step-dot" id="dot-3">3</div>
+            </div>
         </div>
     </header>
 
