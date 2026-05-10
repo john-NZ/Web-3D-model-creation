@@ -882,13 +882,39 @@
         .history-card-variant-badge {
             position: absolute;
             top: 6px;
-            right: 6px;
+            left: 6px;
             background: rgba(140, 100, 255, 0.85);
             color: #fff;
             font-size: 9px;
             padding: 2px 6px;
             border-radius: 3px;
             font-weight: 600;
+        }
+
+        .history-card-delete {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 20px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.55);
+            color: #ddd;
+            border: none;
+            border-radius: 50%;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+            z-index: 2;
+        }
+
+        .history-card-delete:hover {
+            background: rgba(255, 80, 80, 0.9);
+            color: #fff;
         }
 
         /* Variant lineage banner shown when a project with parent_id is loaded */
@@ -2071,6 +2097,48 @@
                     badge.textContent = '↳ #' + p.parent_id;
                     card.appendChild(badge);
                 }
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'history-card-delete';
+                delBtn.type = 'button';
+                delBtn.textContent = '×';
+                delBtn.title = 'Delete project #' + p.id;
+                delBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (!confirm('Delete project #' + p.id + '? This cannot be undone.')) return;
+                    try {
+                        const res = await fetch('/api/projects/' + p.id, { method: 'DELETE' });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(data.error || 'Delete failed');
+
+                        // If the user just deleted the project they were editing,
+                        // wipe local wizard state and stay on Step 1. Mirrors btnStartOver.
+                        if (currentProjectId === p.id) {
+                            uploadedFile = null;
+                            viewImages.front = null;
+                            viewImages.back = null;
+                            viewImages.left = null;
+                            viewImages.right = null;
+                            modelFilename = null;
+                            currentProjectId = null;
+                            loadingViews.clear();
+                            expandedPrompts.clear();
+                            updateViewModelButtonVisibility();
+                            fileInput.value = '';
+                            uploadPreview.style.display = 'none';
+                            btnNextStep.disabled = true;
+                            imageGallery.innerHTML = '';
+                            variantBanner.classList.remove('visible');
+                            staleViewsBanner.classList.remove('visible');
+                            clearErrors();
+                            goToStep(1);
+                        }
+                        loadHistory();
+                    } catch (err) {
+                        alert('Delete failed: ' + err.message);
+                    }
+                });
+                card.appendChild(delBtn);
 
                 card.addEventListener('click', () => loadProject(p.id));
                 historyGrid.appendChild(card);

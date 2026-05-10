@@ -121,6 +121,21 @@ export async function deleteProject(id, userId) {
   return result.rows.length > 0;
 }
 
+// Check whether a filename is still referenced by any project row across
+// any of the image / model columns. Variants copy image filenames from
+// their parent (see createVariant), so a file is only safe to unlink from
+// disk after we've confirmed no other row points at it.
+export async function isFileReferenced(filename) {
+  const result = await pool.query(
+    "SELECT 1 FROM projects WHERE " +
+    "front_image = $1 OR back_image = $1 OR left_image = $1 OR " +
+    "right_image = $1 OR model_file = $1 OR preview_image = $1 " +
+    "LIMIT 1",
+    [filename]
+  );
+  return result.rows.length > 0;
+}
+
 // Creates a new project that is a "variant" of an existing one. Copies all
 // fields except model_file/preview_image (the user will regenerate those)
 // and sets parent_id to the source.

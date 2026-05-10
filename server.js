@@ -621,10 +621,45 @@ app.delete("/api/projects/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
+
+    // Capture the project's filenames BEFORE deleting the row, so we can
+    // decide which files on disk are now unreferenced and safe to unlink.
+    const project = await db.getProject(id, OWNER_USER_ID);
+    if (!project) return res.status(404).json({ error: "Not found" });
+
     const deleted = await db.deleteProject(id, OWNER_USER_ID);
     if (!deleted) return res.status(404).json({ error: "Not found" });
     console.log("[DB] Deleted project id=" + id);
-    res.json({ ok: true });
+
+    // Now that the row is gone, walk each of its files and unlink any that
+    // no other project still references. Errors here are non-fatal — the
+    // DB is the source of truth, and orphaned files can be cleaned up
+    // later by a maintenance pass. We must still report success.
+    const candidates = [
+      project.front_image,
+      project.back_image,
+      project.left_image,
+      project.right_image,
+      project.model_file,
+      project.preview_image,
+    ].filter(Boolean);
+
+    let unlinked = 0;
+    for (const filename of candidates) {
+      try {
+        if (await db.isFileReferenced(filename)) continue;
+        const fullPath = path.join(OUTPUT_DIR, filename);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+          unlinked++;
+        }
+      } catch (err) {
+        console.warn("[DB] Failed to unlink " + filename + ":", err.message);
+      }
+    }
+    if (unlinked > 0) console.log("[DB] Project " + id + " cleanup: unlinked " + unlinked + " file(s)");
+
+    res.json({ ok: true, unlinked });
   } catch (err) {
     console.error("[DB] deleteProject ERROR:", err.message);
     res.status(500).json({ error: err.message });
