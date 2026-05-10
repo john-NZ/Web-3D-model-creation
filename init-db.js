@@ -60,6 +60,24 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS error_message TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS front_prompt TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- Provenance: where each image came from + which 3D model generator was used.
+-- See PROVENANCE-PLAN.md. Generator stores the specific model id (e.g.
+-- "hitem3dv2.0", "meshy-6") so the service is implied by the prefix.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS front_image_source TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS back_image_source  TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS left_image_source  TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS right_image_source TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS generator          TEXT;
+
+-- Backfill: existing rows that already have a model_file were generated with
+-- HiTem3D. Lift the specific model version from the settings JSONB when
+-- present; fall back to the long-time default. Idempotent — re-running won't
+-- overwrite values that have been stamped since.
+UPDATE projects
+   SET generator = COALESCE(settings->>'model', 'hitem3dv2.0')
+ WHERE generator IS NULL
+   AND model_file IS NOT NULL;
 `;
 
 const SEED_OWNER = `

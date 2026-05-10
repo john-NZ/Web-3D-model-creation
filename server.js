@@ -61,8 +61,13 @@ app.post("/api/upload-front", upload.single("image"), async (req, res) => {
     fs.copyFileSync(req.file.path, path.join(OUTPUT_DIR, frontName));
     console.log("[Upload] Front image saved as:", frontName);
 
-    const project = await db.createProject(OWNER_USER_ID, { front_image: frontName });
-    console.log("[DB] Created project id=" + project.id);
+    const fields = { front_image: frontName };
+    if (typeof req.body.source === "string" && req.body.source.trim()) {
+      fields.front_image_source = req.body.source.trim().toLowerCase();
+    }
+    const project = await db.createProject(OWNER_USER_ID, fields);
+    console.log("[DB] Created project id=" + project.id +
+      (fields.front_image_source ? " (source=" + fields.front_image_source + ")" : ""));
 
     res.json({ image: frontName, projectId: project.id });
   } catch (err) {
@@ -89,9 +94,14 @@ app.post("/api/upload-view", upload.single("image"), async (req, res) => {
     fs.copyFileSync(req.file.path, path.join(OUTPUT_DIR, fileName));
     console.log("[Upload] " + view + " view saved as:", fileName);
 
-    const updated = await db.updateProject(projectId, OWNER_USER_ID, { [view + "_image"]: fileName });
+    const fields = { [view + "_image"]: fileName };
+    if (typeof req.body.source === "string" && req.body.source.trim()) {
+      fields[view + "_image_source"] = req.body.source.trim().toLowerCase();
+    }
+    const updated = await db.updateProject(projectId, OWNER_USER_ID, fields);
     if (!updated) return res.status(404).json({ error: "Project not found" });
-    console.log("[DB] Updated project id=" + projectId + " " + view + "_image");
+    console.log("[DB] Updated project id=" + projectId + " " + view + "_image" +
+      (fields[view + "_image_source"] ? " (source=" + fields[view + "_image_source"] + ")" : ""));
 
     res.json({ image: fileName });
   } catch (err) {
@@ -137,8 +147,10 @@ app.post("/api/clear-view", async (req, res) => {
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 
+const OPENAI_IMAGE_MODEL_DEFAULT = "gpt-image-1.5";
+
 async function openaiEditImage(apiKey, prompt, imagePath, opts = {}) {
-  const model = opts.model || "gpt-image-1.5";
+  const model = opts.model || OPENAI_IMAGE_MODEL_DEFAULT;
   const size = opts.size || "1024x1024";
   const quality = opts.quality || "high";
 
@@ -206,14 +218,16 @@ app.post("/api/generate-view", async (req, res) => {
     fs.writeFileSync(path.join(OUTPUT_DIR, fileName), imgBuffer);
     console.log("[OpenAI] Saved: " + fileName);
 
+    const sourceValue = "openai_" + OPENAI_IMAGE_MODEL_DEFAULT;
     const updated = await db.updateProject(pid, OWNER_USER_ID, {
       [view + "_image"]: fileName,
       [view + "_prompt"]: prompt,
+      [view + "_image_source"]: sourceValue,
     });
     if (!updated) return res.status(404).json({ error: "Project not found" });
-    console.log("[DB] Updated project id=" + pid + " " + view + " image+prompt");
+    console.log("[DB] Updated project id=" + pid + " " + view + " image+prompt+source");
 
-    res.json({ image: fileName });
+    res.json({ image: fileName, source: sourceValue });
   } catch (err) {
     console.error("[OpenAI] ERROR:", err.message);
     if (err.stack) console.error(err.stack);
@@ -502,6 +516,9 @@ async function runHitem3dJob(pid, imagePaths, views, opts, settings) {
       settings: settings || null,
       status: "success",
       error_message: null,
+      // Stamp the specific HiTem3D model used (e.g. "hitem3dv2.0"). When
+      // Meshy lands, runMeshyJob will stamp its own ai_model value here.
+      generator: opts.model || "hitem3dv2.0",
     });
     console.log("[Job " + pid + "] DB updated with success");
   } catch (err) {
@@ -623,8 +640,20 @@ app.patch("/api/projects/:id", async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
 
+    // User-editable fields. `generator` is intentionally NOT here — it's
+    // auto-stamped by the generation job, never user-edited.
     const fields = {};
     if (typeof req.body.notes === "string") fields.notes = req.body.notes;
+    for (const view of ["front", "back", "left", "right"]) {
+      const k = view + "_image_source";
+      if (typeof req.body[k] === "string") {
+        // Sources are normalized — trimmed and lowercased — so dropdown
+        // values and free-text "Other..." entries collapse to a single
+        // canonical form. Empty string maps to NULL (cleared).
+        const v = req.body[k].trim().toLowerCase();
+        fields[k] = v || null;
+      }
+    }
 
     if (Object.keys(fields).length === 0) {
       return res.status(400).json({ error: "No updatable fields supplied" });

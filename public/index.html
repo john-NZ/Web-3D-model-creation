@@ -922,6 +922,46 @@
         .notes-status.saved { color: #50c878; }
         .notes-status.error { color: #ff7070; }
 
+        .card-source {
+            padding: 6px 10px 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #888;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .source-select, .source-other {
+            background: rgba(15, 15, 30, 0.6);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 4px;
+            color: #ccc;
+            padding: 4px 6px;
+            font-size: 11px;
+            font-family: inherit;
+            min-width: 0;
+        }
+
+        .source-select { flex: 1; }
+        .source-other  { flex: 2; }
+
+        .source-select:disabled, .source-other:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .source-status {
+            font-size: 10px;
+            color: #888;
+            min-width: 50px;
+            text-align: right;
+            transition: color 0.2s;
+        }
+
+        .source-status.saved { color: #50c878; }
+        .source-status.error { color: #ff7070; }
+
         .history-card-notes {
             padding: 0 10px 8px;
             font-size: 11px;
@@ -1197,7 +1237,27 @@
         // --- State ---
         let uploadedFile = null;
         // viewImages tracks each view: { front: "filename.png", back: null, left: null, right: null }
-        const viewImages = { front: null, back: null, left: null, right: null };
+        const viewImages  = { front: null, back: null, left: null, right: null };
+        const viewSources = { front: null, back: null, left: null, right: null };
+
+        // Last-used source value for pre-filling the dropdown on a fresh
+        // upload. Updated whenever the user picks a value from the dropdown
+        // or types one via "Other…". Auto-stamped values from AI gen
+        // (e.g. "openai_gpt-image-1.5") deliberately do NOT overwrite this.
+        const LAST_SOURCE_KEY = 'lastSource';
+        function getLastSource() { return localStorage.getItem(LAST_SOURCE_KEY) || ''; }
+        function setLastSource(v) { if (v) localStorage.setItem(LAST_SOURCE_KEY, v); }
+
+        // Map a stored source value to the dropdown UI state. Auto-stamped
+        // OpenAI values (e.g. "openai_gpt-image-1.5") collapse to the
+        // "OpenAI" option for display, while the precise value stays in
+        // the DB and is preserved unless the user explicitly changes it.
+        function pickSourceUI(stored) {
+            if (!stored) return { select: '', other: '', otherVisible: false };
+            if (stored === 'midjourney' || stored === 'openai') return { select: stored, other: '', otherVisible: false };
+            if (stored.startsWith('openai_')) return { select: 'openai', other: '', otherVisible: false };
+            return { select: '__other', other: stored, otherVisible: true };
+        }
         let modelFilename = null;
         // ID of the project row in the database. Set after /api/upload-front
         // creates the row, then sent with every subsequent call so the backend
@@ -1408,6 +1468,8 @@
             try {
                 const formData = new FormData();
                 formData.append('image', uploadedFile);
+                const sourceForFront = getLastSource();
+                if (sourceForFront) formData.append('source', sourceForFront);
 
                 const res = await fetch('/api/upload-front', { method: 'POST', body: formData });
                 const data = await res.json();
@@ -1421,6 +1483,10 @@
                 viewImages.back = null;
                 viewImages.left = null;
                 viewImages.right = null;
+                viewSources.front = sourceForFront || null;
+                viewSources.back = null;
+                viewSources.left = null;
+                viewSources.right = null;
                 modelFilename = null;
                 loadingViews.clear();
                 expandedPrompts.clear();
@@ -1572,6 +1638,89 @@
                     card.appendChild(editor);
                 }
 
+                // Source dropdown — what tool/service produced this image.
+                // Disabled until the card actually has an image. Auto-stamped
+                // values fold to the corresponding dropdown option (see
+                // pickSourceUI); the precise value is preserved in the DB
+                // unless the user changes the dropdown.
+                {
+                    const sourceRow = document.createElement('div');
+                    sourceRow.className = 'card-source';
+
+                    const select = document.createElement('select');
+                    select.className = 'source-select';
+                    select.disabled = !viewImages[key];
+                    select.innerHTML =
+                        '<option value="">— source —</option>' +
+                        '<option value="midjourney">Midjourney</option>' +
+                        '<option value="openai">OpenAI</option>' +
+                        '<option value="__other">Other…</option>';
+
+                    const other = document.createElement('input');
+                    other.type = 'text';
+                    other.className = 'source-other';
+                    other.placeholder = 'Source name';
+                    other.disabled = !viewImages[key];
+
+                    const status = document.createElement('span');
+                    status.className = 'source-status';
+
+                    const ui = pickSourceUI(viewSources[key]);
+                    select.value = ui.select;
+                    other.value = ui.other;
+                    other.hidden = !ui.otherVisible;
+
+                    async function patchSource(value) {
+                        if (!currentProjectId) return;
+                        status.textContent = 'Saving…';
+                        status.className = 'source-status';
+                        try {
+                            const res = await fetch('/api/projects/' + currentProjectId, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ [key + '_image_source']: value || '' }),
+                            });
+                            if (!res.ok) throw new Error('Save failed');
+                            viewSources[key] = value || null;
+                            if (value) setLastSource(value);
+                            status.textContent = 'Saved';
+                            status.className = 'source-status saved';
+                        } catch (err) {
+                            status.textContent = 'Save failed';
+                            status.className = 'source-status error';
+                        }
+                    }
+
+                    select.addEventListener('change', () => {
+                        if (select.value === '__other') {
+                            other.hidden = false;
+                            other.value = '';
+                            other.focus();
+                            return;  // wait for blur
+                        }
+                        other.hidden = true;
+                        other.value = '';
+                        patchSource(select.value);
+                    });
+
+                    other.addEventListener('blur', () => {
+                        const v = other.value.trim().toLowerCase();
+                        if (!v) {
+                            // Treat empty Other as "clear source"
+                            select.value = '';
+                            other.hidden = true;
+                            patchSource('');
+                            return;
+                        }
+                        patchSource(v);
+                    });
+
+                    sourceRow.appendChild(select);
+                    sourceRow.appendChild(other);
+                    sourceRow.appendChild(status);
+                    card.appendChild(sourceRow);
+                }
+
                 // Loading overlay (shown while this view is generating)
                 if (loadingViews.has(key)) {
                     const overlay = document.createElement('div');
@@ -1631,6 +1780,7 @@
                 if (!res.ok) throw new Error(data.error || 'Failed to clear view');
 
                 viewImages[view] = null;
+                viewSources[view] = null;
                 staleViewsBanner.classList.remove('visible');
                 renderGallery();
                 updateViewsStatus();
@@ -1655,12 +1805,15 @@
                 formData.append('image', file);
                 formData.append('view', viewName);
                 formData.append('projectId', String(currentProjectId));
+                const sourceForView = getLastSource();
+                if (sourceForView) formData.append('source', sourceForView);
 
                 const res = await fetch('/api/upload-view', { method: 'POST', body: formData });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Upload failed');
 
                 viewImages[viewName] = data.image;
+                viewSources[viewName] = sourceForView || null;
                 refreshStaleViewsBanner(viewName);
                 renderGallery();
                 updateViewsStatus();
@@ -1714,6 +1867,7 @@
                 if (!res.ok) throw new Error(data.error || 'Failed to generate ' + view);
 
                 viewImages[view] = data.image;
+                if (data.source) viewSources[view] = data.source;
                 refreshStaleViewsBanner(view);
             } catch (err) {
                 showError(2, `Failed to generate ${view}: ${err.message}`);
@@ -2105,6 +2259,10 @@
             viewImages.back = null;
             viewImages.left = null;
             viewImages.right = null;
+            viewSources.front = null;
+            viewSources.back = null;
+            viewSources.left = null;
+            viewSources.right = null;
             modelFilename = null;
             currentProjectId = null;
             loadingViews.clear();
@@ -2157,13 +2315,21 @@
                 card.title = 'Open project #' + p.id;
 
                 const thumbSrc = p.preview_image || p.front_image;
-                let status, statusLabel;
+                let status, statusLabel, statusTitle = '';
                 if (p.status === 'processing') {
                     status = 'processing'; statusLabel = 'Processing';
                 } else if (p.status === 'failed') {
                     status = 'failed'; statusLabel = 'Failed';
                 } else if (p.model_file) {
                     status = 'done'; statusLabel = 'Model';
+                    if (p.generator) {
+                        const service =
+                            p.generator.startsWith('hitem3d') ? 'HiTem3D' :
+                            p.generator.startsWith('meshy')   ? 'Meshy'   :
+                            p.generator;
+                        statusLabel = 'Model · ' + service;
+                        statusTitle = 'Generated with ' + p.generator;
+                    }
                 } else {
                     status = 'draft'; statusLabel = 'Draft';
                 }
@@ -2190,6 +2356,7 @@
                 const statusEl = document.createElement('span');
                 statusEl.className = 'history-card-status ' + status;
                 statusEl.textContent = statusLabel;
+                if (statusTitle) statusEl.title = statusTitle;
                 meta.appendChild(idEl);
                 meta.appendChild(statusEl);
 
@@ -2235,6 +2402,10 @@
                             viewImages.back = null;
                             viewImages.left = null;
                             viewImages.right = null;
+                            viewSources.front = null;
+                            viewSources.back = null;
+                            viewSources.left = null;
+                            viewSources.right = null;
                             modelFilename = null;
                             currentProjectId = null;
                             loadingViews.clear();
@@ -2275,6 +2446,10 @@
                 viewImages.back = project.back_image || null;
                 viewImages.left = project.left_image || null;
                 viewImages.right = project.right_image || null;
+                viewSources.front = project.front_image_source || null;
+                viewSources.back = project.back_image_source || null;
+                viewSources.left = project.left_image_source || null;
+                viewSources.right = project.right_image_source || null;
                 modelFilename = project.model_file || null;
                 updateViewModelButtonVisibility();
 

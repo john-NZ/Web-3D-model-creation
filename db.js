@@ -56,6 +56,11 @@ const WRITABLE_COLUMNS = new Set([
   "error_message",
   "processing_started_at",
   "notes",
+  "front_image_source",
+  "back_image_source",
+  "left_image_source",
+  "right_image_source",
+  "generator",
 ]);
 
 function pickWritable(fields) {
@@ -99,7 +104,8 @@ export async function updateProject(id, userId, fields) {
 
 export async function listProjects(userId) {
   const result = await pool.query(
-    "SELECT id, parent_id, created_at, title, front_image, preview_image, model_file, status, error_message, notes " +
+    "SELECT id, parent_id, created_at, title, front_image, preview_image, model_file, status, error_message, notes, " +
+    "front_image_source, back_image_source, left_image_source, right_image_source, generator " +
     "FROM projects WHERE user_id = $1 ORDER BY created_at DESC",
     [userId]
   );
@@ -159,7 +165,15 @@ export async function createVariant(parentId, userId) {
     back_prompt: parent.back_prompt,
     left_prompt: parent.left_prompt,
     right_prompt: parent.right_prompt,
+    // Image provenance carries over — same images, same source. The 3D
+    // generator does NOT carry over; a variant exists specifically to try
+    // a different generator (or different settings) and gets a fresh stamp
+    // on its next generation.
+    front_image_source: parent.front_image_source,
+    back_image_source: parent.back_image_source,
+    left_image_source: parent.left_image_source,
+    right_image_source: parent.right_image_source,
     settings: variantSettings,
-    // model_file and preview_image intentionally NOT copied
+    // model_file, preview_image, notes, generator intentionally NOT copied
   });
 }
