@@ -616,6 +616,29 @@ app.post("/api/projects/:id/variant", async (req, res) => {
   }
 });
 
+// PATCH /api/projects/:id — partial update. Currently only `notes` is
+// patchable; expand the allow-list as more user-editable fields appear.
+app.patch("/api/projects/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
+
+    const fields = {};
+    if (typeof req.body.notes === "string") fields.notes = req.body.notes;
+
+    if (Object.keys(fields).length === 0) {
+      return res.status(400).json({ error: "No updatable fields supplied" });
+    }
+
+    const updated = await db.updateProject(id, OWNER_USER_ID, fields);
+    if (!updated) return res.status(404).json({ error: "Not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[DB] patchProject ERROR:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/projects/:id
 app.delete("/api/projects/:id", async (req, res) => {
   try {

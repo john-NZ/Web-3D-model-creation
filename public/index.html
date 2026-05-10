@@ -891,6 +891,48 @@
             font-weight: 600;
         }
 
+        #notes-textarea {
+            width: 100%;
+            min-height: 100px;
+            background: rgba(15, 15, 30, 0.6);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            color: #ddd;
+            padding: 10px;
+            font-family: inherit;
+            font-size: 13px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        #notes-textarea:focus {
+            outline: none;
+            border-color: rgba(140, 140, 255, 0.5);
+        }
+
+        .notes-status {
+            margin-top: 6px;
+            font-size: 11px;
+            color: #888;
+            text-align: right;
+            min-height: 1em;
+            transition: color 0.2s;
+        }
+
+        .notes-status.saved { color: #50c878; }
+        .notes-status.error { color: #ff7070; }
+
+        .history-card-notes {
+            padding: 0 10px 8px;
+            font-size: 11px;
+            color: #888;
+            line-height: 1.3;
+            font-style: italic;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         .history-card-delete {
             position: absolute;
             top: 4px;
@@ -1017,6 +1059,18 @@
             <div class="views-status" id="views-status"></div>
 
             <div class="image-gallery" id="image-gallery"></div>
+
+            <!-- Notes -->
+            <div class="settings-panel" id="notes-panel">
+                <button class="settings-toggle" id="notes-toggle">
+                    <span>Notes</span>
+                    <span class="arrow">&#9660;</span>
+                </button>
+                <div class="settings-body">
+                    <textarea id="notes-textarea" rows="6" placeholder="Anything worth remembering — image sources, prompts that worked, things to try next time."></textarea>
+                    <div class="notes-status" id="notes-status"></div>
+                </div>
+            </div>
 
             <!-- HiTem3D Settings -->
             <div class="settings-panel" id="settings-panel">
@@ -1372,6 +1426,7 @@
                 expandedPrompts.clear();
                 variantBanner.classList.remove('visible');
                 staleViewsBanner.classList.remove('visible');
+                clearNotesUI();
                 updateViewModelButtonVisibility();
 
                 currentProjectId = data.projectId;
@@ -1697,6 +1752,55 @@
             settingsPanel.classList.toggle('open');
         });
 
+        // --- Notes panel ---
+        const notesPanel = document.getElementById('notes-panel');
+        const notesToggle = document.getElementById('notes-toggle');
+        const notesTextarea = document.getElementById('notes-textarea');
+        const notesStatus = document.getElementById('notes-status');
+        let notesDirty = false;
+
+        notesToggle.addEventListener('click', () => {
+            notesPanel.classList.toggle('open');
+        });
+
+        notesTextarea.addEventListener('input', () => {
+            notesDirty = true;
+            notesStatus.textContent = '';
+            notesStatus.className = 'notes-status';
+        });
+
+        notesTextarea.addEventListener('blur', async () => {
+            if (!notesDirty || !currentProjectId) return;
+            notesDirty = false;
+            const value = notesTextarea.value;
+            notesStatus.textContent = 'Saving…';
+            notesStatus.className = 'notes-status';
+            try {
+                const res = await fetch('/api/projects/' + currentProjectId, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes: value }),
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || 'Save failed');
+                }
+                notesStatus.textContent = 'Saved';
+                notesStatus.className = 'notes-status saved';
+            } catch (err) {
+                notesStatus.textContent = 'Save failed — ' + err.message;
+                notesStatus.className = 'notes-status error';
+                notesDirty = true;
+            }
+        });
+
+        function clearNotesUI() {
+            notesTextarea.value = '';
+            notesStatus.textContent = '';
+            notesStatus.className = 'notes-status';
+            notesDirty = false;
+        }
+
         faceSlider.addEventListener('input', () => {
             faceValue.textContent = Number(faceSlider.value).toLocaleString();
         });
@@ -2012,6 +2116,7 @@
             imageGallery.innerHTML = '';
             variantBanner.classList.remove('visible');
             staleViewsBanner.classList.remove('visible');
+            clearNotesUI();
             clearErrors();
             goToStep(1);
             loadHistory();
@@ -2098,6 +2203,17 @@
                     card.appendChild(badge);
                 }
 
+                if (p.notes) {
+                    const firstLine = p.notes.split('\n')[0].trim();
+                    if (firstLine) {
+                        const preview = document.createElement('div');
+                        preview.className = 'history-card-notes';
+                        preview.textContent = firstLine.length > 40 ? firstLine.slice(0, 40) + '…' : firstLine;
+                        preview.title = p.notes;
+                        card.appendChild(preview);
+                    }
+                }
+
                 const delBtn = document.createElement('button');
                 delBtn.className = 'history-card-delete';
                 delBtn.type = 'button';
@@ -2130,6 +2246,7 @@
                             imageGallery.innerHTML = '';
                             variantBanner.classList.remove('visible');
                             staleViewsBanner.classList.remove('visible');
+                            clearNotesUI();
                             clearErrors();
                             goToStep(1);
                         }
@@ -2172,6 +2289,12 @@
                 // Loading a project is a clean slate for the stale-views banner;
                 // it'll re-appear if the user does a front edit afterwards.
                 staleViewsBanner.classList.remove('visible');
+
+                // Populate notes from the project record.
+                notesTextarea.value = project.notes || '';
+                notesStatus.textContent = '';
+                notesStatus.className = 'notes-status';
+                notesDirty = false;
 
                 // Populate settings inputs from settings JSONB (if present)
                 const settings = project.settings || {};
