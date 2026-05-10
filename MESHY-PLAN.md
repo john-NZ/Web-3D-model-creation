@@ -39,6 +39,8 @@ Where to get it: https://www.meshy.ai/settings/api → "Create new API key". The
 
 ## 3. Database schema changes
 
+> **Note (added during PROVENANCE-PLAN work):** the `generator` column described below is now owned by [PROVENANCE-PLAN.md](PROVENANCE-PLAN.md). The current semantics differ from this section in two ways: (1) `generator` is nullable and stores the specific model id (e.g. `"hitem3dv2.0"`, `"meshy-6"`), not the service name; (2) variants do NOT inherit `generator`. The other column descriptions below are still accurate. Reconcile this section when Meshy work is actually implemented.
+
 Three new columns on `projects`. Edit `init-db.js` (uses `ADD COLUMN IF NOT EXISTS`, idempotent). Run once with `node init-db.js` against production DB.
 
 ```sql
